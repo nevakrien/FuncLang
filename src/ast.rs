@@ -28,32 +28,50 @@ struct NumberParseError {
 }
 
 fn parse_number(input: &str) -> IResult<&str, Number, nom::error::Error<&str>> {
-    let (input, _) = opt(one_of("+-"))(input)?;
+    // Parse the sign, if any
+    let (input, sign) = opt(one_of("+-"))(input)?;
+
+    // Parse the main digits and optional underscores
     let (input, digits) = recognize(pair(
         digit1,
         opt(pair(char('_'), take_while1(|c: char| c.is_digit(10)))),
     ))(input)?;
+
+    // Remove underscores from the parsed digits
+    let mut cleaned_digits: String = digits.chars().filter(|&c| c != '_').collect();
+
+    // Check for the fractional part, if any
     let (input, fractional) = opt(preceded(
         char('.'),
         recognize(pair(digit1, opt(pair(char('_'), take_while1(|c: char| c.is_digit(10)))))),
     ))(input)?;
 
-    let cleaned_digits: String = digits.chars().filter(|&c| c != '_').collect();
+    if let Some(fractional) = fractional {
+        // Push the dot and the fractional part onto the cleaned digits string
+        cleaned_digits.push('.');
+        cleaned_digits.extend(fractional.chars().filter(|&c| c != '_'));
 
-    if let Some(frac) = fractional {
-        let cleaned_frac: String = frac.chars().filter(|&c| c != '_').collect();
-        let num_str = format!("{}.{}", cleaned_digits, cleaned_frac);
-        let number = num_str.parse::<f64>().map_err(|_| {
+        // Parse the number as a float and apply the sign if needed
+        let mut number = cleaned_digits.parse::<f64>().map_err(|_| {
             nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Float))
         })?;
+        if sign == Some('-') {
+            number = -number;
+        }
         Ok((input, Number::Float(number)))
     } else {
-        let number = cleaned_digits.parse::<i64>().map_err(|_| {
+        // Parse the number as an integer and apply the sign if needed
+        let mut number = cleaned_digits.parse::<i64>().map_err(|_| {
             nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Digit))
         })?;
+        if sign == Some('-') {
+            number = -number;
+        }
         Ok((input, Number::Int(number)))
     }
 }
+
+
 
 fn parse_and_report(input: &str) -> Result<Number, NumberParseError> {
     let clean_input = input.to_string();
@@ -135,6 +153,8 @@ fn test_invalid_numbers() {
 
 #[test]
 fn test_valid_numbers() {
+    assert_eq!(parse_and_report("-69").unwrap(), Number::Int(-69));    
+    assert_eq!(parse_and_report("+69").unwrap(), Number::Int(69));
     assert_eq!(parse_and_report("12345").unwrap(), Number::Int(12345));
     assert_eq!(parse_and_report("10_000").unwrap(), Number::Int(10_000));
     assert_eq!(parse_and_report("3.1415").unwrap(), Number::Float(3.1415));
