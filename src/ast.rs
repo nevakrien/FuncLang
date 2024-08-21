@@ -1,14 +1,13 @@
-use miette::{Diagnostic, NamedSource, Report, Result};
-//use nom::{character::complete::{digit1, one_of}, combinator::{opt, all_consuming}, sequence::tuple, IResult};
-use thiserror::Error;
+use ariadne::{Color, Fmt, Label, Report, ReportKind, Source};
 use nom::{
     bytes::complete::take_while1,
     character::complete::{char, digit1, one_of},
-    combinator::{opt, recognize,all_consuming},
+    combinator::{opt, recognize, all_consuming},
     sequence::{pair, preceded},
     IResult,
 };
-
+use thiserror::Error;
+use std::fmt;
 
 #[derive(Debug, PartialEq)]
 enum Number {
@@ -16,24 +15,24 @@ enum Number {
     Float(f64),
 }
 
-#[derive(Debug, Error,Diagnostic)]
+#[derive(Debug, Error)]
 enum ParseError {
     #[error("Nom error: {0}")]
     NomError(nom::Err<nom::error::Error<String>>),
 }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("Failed to parse number")]
-#[diagnostic(code(parse::number_error))]
+#[derive(Debug)]
 struct NumberParseError {
-    #[source_code]
-    src: NamedSource<String>,
-    #[label("Error occurred here")]
+    src: String,
     span: (usize, usize),
-    #[source]
     nom_error: ParseError,
 }
 
+impl fmt::Display for NumberParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.nom_error)
+    }
+}
 
 fn parse_number(input: &str) -> IResult<&str, Number, nom::error::Error<&str>> {
     let (input, _) = opt(one_of("+-"))(input)?;
@@ -46,7 +45,6 @@ fn parse_number(input: &str) -> IResult<&str, Number, nom::error::Error<&str>> {
         recognize(pair(digit1, opt(pair(char('_'), take_while1(|c: char| c.is_digit(10)))))),
     ))(input)?;
 
-    // Remove underscores from digits and fractional part
     let cleaned_digits: String = digits.chars().filter(|&c| c != '_').collect();
 
     if let Some(frac) = fractional {
@@ -64,8 +62,7 @@ fn parse_number(input: &str) -> IResult<&str, Number, nom::error::Error<&str>> {
     }
 }
 
-
-fn parse_and_report(input: &str) -> Result<Number, Report> {
+fn parse_and_report(input: &str) -> Result<Number, NumberParseError> {
     let clean_input = input.to_string();
     let parse_result: Result<Number, ParseError> = all_consuming(parse_number)(&clean_input)
         .map(|(_, number)| number)
@@ -77,35 +74,45 @@ fn parse_and_report(input: &str) -> Result<Number, Report> {
     match parse_result {
         Ok(number) => Ok(number),
         Err(e) => {
-            let report = Report::new(NumberParseError {
-                src: NamedSource::new("input", clean_input),
+            Err(NumberParseError {
+                src: clean_input,
                 span: (0, input.len()),
                 nom_error: e,
-            });
-            Err(report)
+            })
         }
     }
+}
+
+fn report_error(error: NumberParseError) {
+    let source = Source::from(&error.src);
+    let report = Report::build(ReportKind::Error, "input", error.span.0)
+        .with_message("Failed to parse number")
+        .with_label(Label::new(("input", error.span.0..error.span.1))
+            .with_message(format!("{}", error.nom_error))
+            .with_color(Color::Red))
+        .finish();
+
+    report.eprint(("input", source)).unwrap();
 }
 
 #[test]
 fn test_invalid_numbers() {
     println!("Testing invalid number inputs...");
 
-    // let v=parse_and_report("12_34_").unwrap();
     if let Err(e) = parse_and_report("12_34_") {
-        println!("Error for input '12_34_': {:?}", e);
+        report_error(e);
     } else {
         panic!("Expected an error for input '12_34_'");
     }
 
     if let Err(e) = parse_and_report("123a45") {
-        println!("Error for input '123a45': {:?}", e);
+        report_error(e);
     } else {
         panic!("Expected an error for input '123a45'");
     }
 
     if let Err(e) = parse_and_report("3.14.15") {
-        println!("Error for input '3.14.15': {:?}", e);
+        report_error(e);
     } else {
         panic!("Expected an error for input '3.14.15'");
     }
