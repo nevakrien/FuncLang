@@ -4,9 +4,10 @@ use nom::{
     character::complete::{char, digit1, one_of},
     combinator::{opt, recognize, all_consuming},
     sequence::{pair, preceded},
+    error::{ParseError, ErrorKind},
     IResult,
 };
-use thiserror::Error;
+// use thiserror::Error;
 use std::io::{self, Write,Cursor};
 
 #[derive(Debug, PartialEq)]
@@ -15,19 +16,51 @@ enum Number {
     Float(f64),
 }
 
-#[derive(Debug, Error)]
-enum ParseError {
-    #[error("Nom error: {0}")]
-    NomError(nom::Err<nom::error::Error<String>>),
-}
 
 #[derive(Debug)]
+// #[error("{reason} at {span:?} in input: {src}")]
 struct NumberParseError {
     src: String,
     span: (usize, usize),
+    reason: String,
 }
 
-fn parse_number(input: &str) -> IResult<&str, Number, nom::error::Error<&str>> {
+impl ParseError<&str> for NumberParseError {
+    fn from_error_kind(input: &str, kind: ErrorKind) -> Self {
+        NumberParseError {
+            src: input.to_string(),
+            span: (0, input.len()),
+            reason: kind.description().to_string(),
+        }
+    }
+
+    fn append(input: &str, kind: ErrorKind, mut other: Self) -> Self {
+        // Extend the span to cover the new input
+        other.span.1 += input.len();
+
+        // Append the new part of the input to the source
+        other.src.push_str(input);
+
+        // Append the new error kind to the reason
+        other.reason.push_str(&format!(", {}", kind.description()));
+
+        other
+    }
+
+    fn from_char(input: &str, _: char) -> Self {
+        NumberParseError {
+            src: input.to_string(),
+            span: (0, input.len()),
+            reason: "Unexpected character".to_string(),
+        }
+    }
+}
+
+
+fn parse_number(input: &str) -> IResult<&str, Number, NumberParseError> {
+    //save base for reports
+    let original = input;//.to_string(); 
+
     // Parse the sign, if any
     let (input, sign) = opt(one_of("+-"))(input)?;
 
@@ -46,54 +79,51 @@ fn parse_number(input: &str) -> IResult<&str, Number, nom::error::Error<&str>> {
         recognize(pair(digit1, opt(pair(char('_'), take_while1(|c: char| c.is_digit(10)))))),
     ))(input)?;
 
+
     if let Some(fractional) = fractional {
-        // Push the dot and the fractional part onto the cleaned digits string
         cleaned_digits.push('.');
         cleaned_digits.extend(fractional.chars().filter(|&c| c != '_'));
-
-        // Parse the number as a float and apply the sign if needed
-        let mut number = cleaned_digits.parse::<f64>().map_err(|_| {
-            nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Float))
+        let number = cleaned_digits.parse::<f64>().map_err(|_| {
+            nom::Err::Error(NumberParseError {
+                src: original.to_string(),
+                span: (0, original.len()),
+                reason: "Failed to parse as float".to_string(),
+            })
         })?;
-        if sign == Some('-') {
-            number = -number;
-        }
+        
+        let number = if sign == Some('-') { -number } else { number };
         Ok((input, Number::Float(number)))
     } else {
-        // Parse the number as an integer and apply the sign if needed
-        let mut number = cleaned_digits.parse::<i64>().map_err(|_| {
-            nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Digit))
+        let number = cleaned_digits.parse::<i64>().map_err(|_| {
+            nom::Err::Error(NumberParseError {
+                src: original.to_string(),
+                span: (0, original.len()),
+                reason: "Failed to parse as integer".to_string(),
+            })
         })?;
-        if sign == Some('-') {
-            number = -number;
-        }
+
+        let number = if sign == Some('-') { -number } else { number };
         Ok((input, Number::Int(number)))
     }
 }
 
 
-
 fn parse_and_report(input: &str) -> Result<Number, NumberParseError> {
-    let clean_input = input.to_string();
-    let parse_result: Result<Number, ParseError> = all_consuming(parse_number)(&clean_input)
-        .map(|(_, number)| number)
-        .map_err(|e| {
-            let converted_err = e.map_input(|input| input.to_string());
-            ParseError::NomError(converted_err)
-        });
-
-    match parse_result {
-        Ok(number) => Ok(number),
-        Err(_e) => {
-            Err(NumberParseError {
-                src: input.to_string(),
-                span: (0, input.len()),
-            })
+    match all_consuming(parse_number)(input) {
+        Ok((_, number)) => Ok(number),
+        Err(nom::Err::Error(mut e)) | Err(nom::Err::Failure(mut e)) => {
+            // Fix src and span in case of Error or Failure
+            e.src = input.to_string();
+            e.span = (0, input.len());
+            Err(e)
         }
+        Err(nom::Err::Incomplete(_)) => Err(NumberParseError {
+            src: input.to_string(),
+            span: (0, input.len()),
+            reason: "Incomplete input: more data required".to_string(),
+        }),
     }
 }
-
-
 
 
 fn report_error(error: NumberParseError,file:impl Write) {
@@ -140,6 +170,14 @@ fn test_invalid_numbers() {
             report_error(e, &mut buffer);
         } else {
             panic!("Expected an error for input '3.14.15'");
+        }
+    }
+
+    {
+        if let Err(e) = parse_and_report("311 322") {
+            report_error(e, &mut buffer);
+        } else {
+            panic!("Expected an error for input '311 322'");
         }
     }
 
