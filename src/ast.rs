@@ -1,4 +1,4 @@
-use ariadne::{Color, Fmt, Label, Report, ReportKind, Source};
+use ariadne::{Color, Label, Report, ReportKind, Source};
 use nom::{
     bytes::complete::take_while1,
     character::complete::{char, digit1, one_of},
@@ -7,7 +7,7 @@ use nom::{
     IResult,
 };
 use thiserror::Error;
-use std::fmt;
+use std::io::{self, Write,Cursor};
 
 #[derive(Debug, PartialEq)]
 enum Number {
@@ -25,13 +25,6 @@ enum ParseError {
 struct NumberParseError {
     src: String,
     span: (usize, usize),
-    nom_error: ParseError,
-}
-
-impl fmt::Display for NumberParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.nom_error)
-    }
 }
 
 fn parse_number(input: &str) -> IResult<&str, Number, nom::error::Error<&str>> {
@@ -73,50 +66,72 @@ fn parse_and_report(input: &str) -> Result<Number, NumberParseError> {
 
     match parse_result {
         Ok(number) => Ok(number),
-        Err(e) => {
+        Err(_e) => {
             Err(NumberParseError {
-                src: clean_input,
+                src: input.to_string(),
                 span: (0, input.len()),
-                nom_error: e,
             })
         }
     }
 }
 
-fn report_error(error: NumberParseError) {
+
+
+
+fn report_error(error: NumberParseError,file:impl Write) {
     let source = Source::from(&error.src);
-    let report = Report::build(ReportKind::Error, "input", error.span.0)
+    let report = Report::build(ReportKind::Error, "input", error.span.1)
         .with_message("Failed to parse number")
         .with_label(Label::new(("input", error.span.0..error.span.1))
-            .with_message(format!("{}", error.nom_error))
+            // .with_message(format!("{}", error.nom_error))
             .with_color(Color::Red))
         .finish();
 
-    report.eprint(("input", source)).unwrap();
+    // io::stdout().flush().unwrap();
+    report.write(("input", source),file).unwrap();
+    // io::stdout().flush().unwrap();
 }
+
+
+
 
 #[test]
 fn test_invalid_numbers() {
     println!("Testing invalid number inputs...");
 
-    if let Err(e) = parse_and_report("12_34_") {
-        report_error(e);
-    } else {
-        panic!("Expected an error for input '12_34_'");
+    let mut buffer = Cursor::new(Vec::new());
+
+    {
+        if let Err(e) = parse_and_report("12_34_") {
+            report_error(e, &mut buffer);
+        } else {
+            panic!("Expected an error for input '12_34_'");
+        }
     }
 
-    if let Err(e) = parse_and_report("123a45") {
-        report_error(e);
-    } else {
-        panic!("Expected an error for input '123a45'");
+    {
+        if let Err(e) = parse_and_report("123a45") {
+            report_error(e, &mut buffer);
+        } else {
+            panic!("Expected an error for input '123a45'");
+        }
     }
 
-    if let Err(e) = parse_and_report("3.14.15") {
-        report_error(e);
-    } else {
-        panic!("Expected an error for input '3.14.15'");
+    {
+        if let Err(e) = parse_and_report("3.14.15") {
+            report_error(e, &mut buffer);
+        } else {
+            panic!("Expected an error for input '3.14.15'");
+        }
     }
+
+    // Ensure stdout is flushed
+    io::stdout().flush().unwrap();
+    io::stdout().write_all(&buffer.into_inner()).unwrap();
+    io::stdout().flush().unwrap();
+
 }
+
 
 #[test]
 fn test_valid_numbers() {
