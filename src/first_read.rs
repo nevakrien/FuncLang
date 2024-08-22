@@ -34,9 +34,9 @@ pub enum BasicType<'a> {
 
 }
 pub struct Gatherer<'a> {
-    pub line_num :usize,
-    pub current_index: usize,
-    full_code : &'a [u8],
+    line_num :usize,
+    current_index: usize,
+    pub full_code : &'a [u8],
 }
 
 impl<'a> Gatherer<'a> {
@@ -49,7 +49,7 @@ impl<'a> Gatherer<'a> {
         }
     }
 
-    pub fn next(&mut self,err_file: impl Write) -> Option<BasicType<'a>>{
+    pub fn next(&mut self,err_file: Option<impl Write>) -> Option<BasicType<'a>>{
         if !self.get_valid_start() {
             return None;
         }
@@ -100,7 +100,7 @@ impl<'a> Gatherer<'a> {
     }
 
     /// Skips over non-key bytes (anything not `{`, `}`, `;`, `#`) and returns the remaining slice.
-    fn skip_non_keybytes(&mut self) -> bool{
+    fn skip_non_keybytes (&mut self) -> bool{
         // Move the current index past all non-key bytes.
         while self.current_index < self.full_code.len() {
             let byte = self.full_code[self.current_index];
@@ -115,6 +115,18 @@ impl<'a> Gatherer<'a> {
             self.current_index += 1;
         }
         return false;
+    }
+
+    //api for external code to consume from us
+    pub fn line(&self) -> usize {self.line_num}
+    pub fn index(&self) -> usize {self.current_index}
+    pub fn consume(&mut self,amount: usize)  {
+        for i in 0..amount {
+            if self.full_code[i]==b'\n' {
+                self.line_num+=1;
+            }
+        }
+        self.current_index+=amount;
     }
 }
 
