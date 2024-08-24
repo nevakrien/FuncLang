@@ -7,6 +7,7 @@ use nom::multi::fold_many0;
 use nom::branch::alt;	
 
 use crate::errors::{Cursor,CResult};
+use nom::combinator::opt;
 
 pub enum LexToken<'a> {
 	Comment(&'a str),
@@ -27,14 +28,12 @@ pub enum IntToken<'a>{
 }
 
 fn skip_whitespace<'a>(input: Cursor<'a>) -> Cursor<'a> {
-	fn _skip_whitespace<'a>(input: Cursor<'a>) -> CResult<'a,Cursor<'a>>{
+	fn typed_take_whitespace<'a>(input: Cursor<'a>) -> CResult<'a,Cursor<'a>>{
 		take_while( |c:char| c.is_whitespace())(input)
 	}
-
-	match _skip_whitespace(input.clone()){
-		Err(_) => input,
-		Ok((ans,_)) => ans,
-	}
+	let s=opt(typed_take_whitespace)(input);
+	let(ans,_)=s.unwrap();
+	return ans;
 }
 
 fn comment<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
@@ -62,7 +61,7 @@ fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
 			(i,*x.fragment())
 		)
 	}
-	let (input,d)=recognize(digit1)(input)?;
+	let (input,d)=digit1(input)?;
 
 	let ans = fold_many0(
 		alt((
@@ -112,4 +111,26 @@ fn test_uint_underscored_valid() {
         result,
         Ok((input.take_split(6).0, 987654u64))
     );
+}
+
+#[test]
+fn test_skip_whitespace() {
+    let diag = Diagnostics::new();
+    let reporter = Reporter::new(&diag);
+
+    let input = Cursor::new_extra("   xyz", reporter.clone());
+    let result = skip_whitespace(input.clone());
+    assert_eq!(result, input.take_split(3).0);
+
+    let input = Cursor::new_extra("\t\t123_6_22 as", reporter.clone());
+    let result = skip_whitespace(input.clone());
+    assert_eq!(result, input.take_split(2).0);
+
+    let input = Cursor::new_extra("\n!!!", reporter.clone());
+    let result = skip_whitespace(input.clone());
+    assert_eq!(result, input.take_split(1).0);
+
+    let input = Cursor::new_extra("987654", reporter.clone());
+    let result = skip_whitespace(input.clone());
+    assert_eq!(result, input); // No whitespace to skip, so it should return the original input
 }
