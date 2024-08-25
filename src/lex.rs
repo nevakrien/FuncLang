@@ -6,25 +6,29 @@ use nom::character::complete::{digit1};
 use nom::multi::fold_many0;
 use nom::branch::alt;	
 
-use crate::errors::{Cursor,CResult};
+use crate::errors::{Cursor,CResult,strip_reporting,UserSideError};
 use nom::combinator::opt;
+use  nom_locate::LocatedSpan;
 
-pub enum LexToken<'a> {
-	Comment(&'a str),
-	Word(&'a str),
-	Float(FloatToken<'a>),
-	Int(IntToken<'a>),
+
+
+pub type LexToken<'a> = LocatedSpan<&'a str,LexTag>;
+pub enum LexTag {
+	Comment(),
+	Word(),
+	Float(FloatTag),
+	Int(IntTag),
 }
 
-pub enum FloatToken<'a>{
+pub enum FloatTag{
 	Valid(f64),
-	UnexpectedEnd(Cursor<'a>),
-	JustDot(Cursor<'a>),	
+	UnexpectedEnd(),
+	JustDot(),	
 }
 
-pub enum IntToken<'a>{
-	Valid(f64),
-	UnexpectedEnd(Cursor<'a>),	
+pub enum IntTag{
+	Valid(i64),
+	UnexpectedEnd(),	
 }
 
 fn skip_whitespace<'a>(input: Cursor<'a>) -> Cursor<'a> {
@@ -40,7 +44,7 @@ fn comment<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 	let (_,input)=is_a("#")(input)?;
 	take_till(|c| c=='\n')(input)
 	.map(|(i,x)| 
-		(i,LexToken::Comment(*x.fragment()))
+		(i,strip_reporting(x).map_extra(|()| LexTag::Comment()))
 	)	
 }
 
@@ -50,7 +54,7 @@ fn name<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
 		take_while( |c:char| c.is_alphanumeric() || c=='_')
 	))(input)
 	.map(|(i,x)| 
-		(i,LexToken::Word(*x.fragment()))
+		(i,strip_reporting(x).map_extra(|()| LexTag::Word()))
 	)		
 }
 
@@ -62,7 +66,11 @@ fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
 		)
 	}
 	let (input,d)=digit1(input)?;
+	
+	let diag = input.extra.diag;
+	let report_input=strip_reporting(input.clone());
 
+	let mut overflowed = false;
 	let ans = fold_many0(
 		alt((
         	preceded(is_a("_"),typed_digit1),
@@ -70,11 +78,20 @@ fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
         ),
         ||{d.parse::<u64>().unwrap()},
         |acc, item| {
-            acc.checked_mul(10u64.pow(item.len() as u32)) // Adjust multiplier based on number of digits
+        	if !overflowed{
+        		acc.checked_mul(10u64.pow(item.len() as u32)) // Adjust multiplier based on number of digits
                 .and_then(|acc| acc.checked_add(item.parse::<u64>().unwrap()))
                 .unwrap_or_else(|| {
-                    panic!("Overflow occurred while parsing digits")
+                	overflowed = true;
+                	diag.report_error(UserSideError::OverflowError(report_input,acc));
+                	acc
                 })
+        	}
+
+        	else{
+        		acc
+        	}
+            
         },
     )(input);
     ans
@@ -82,30 +99,29 @@ fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
 #[cfg(test)]
 use crate::errors::Diagnostics;
 #[cfg(test)]
-use crate::errors::Reporter;
-#[cfg(test)]
 use nom::InputTake;
+#[cfg(test)]
+use crate::errors::make_cursor;
 
 #[test]
 fn test_uint_underscored_valid() {
     let diag = Diagnostics::new();
-    let reporter = Reporter::new(&diag);
 
-    let input = Cursor::new_extra("111_222_333xyz", reporter.clone());
+    let input = make_cursor("111_222_333xyz", &diag);
     let result = uint_underscored(input.clone());
     assert_eq!(
         result,
         Ok((input.take_split(11).0, 111_222_333u64))
     );
 
-    let input = Cursor::new_extra("123_6_22 as", reporter.clone());
+    let input = make_cursor("123_6_22 as", &diag);
     let result = uint_underscored(input.clone());
     assert_eq!(
         result,
         Ok((input.take_split(8).0, 123_6_22u64))
     );
 
-    let input = Cursor::new_extra("987654", reporter.clone());
+    let input = make_cursor("987654", &diag);
     let result = uint_underscored(input.clone());
     assert_eq!(
         result,
@@ -116,21 +132,20 @@ fn test_uint_underscored_valid() {
 #[test]
 fn test_skip_whitespace() {
     let diag = Diagnostics::new();
-    let reporter = Reporter::new(&diag);
 
-    let input = Cursor::new_extra("   xyz", reporter.clone());
+    let input = make_cursor("   xyz", &diag);
     let result = skip_whitespace(input.clone());
     assert_eq!(result, input.take_split(3).0);
 
-    let input = Cursor::new_extra("\t\t123_6_22 as", reporter.clone());
+    let input = make_cursor("\t\t123_6_22 as", &diag);
     let result = skip_whitespace(input.clone());
     assert_eq!(result, input.take_split(2).0);
 
-    let input = Cursor::new_extra("\n!!!", reporter.clone());
+    let input = make_cursor("\n!!!", &diag);
     let result = skip_whitespace(input.clone());
     assert_eq!(result, input.take_split(1).0);
 
-    let input = Cursor::new_extra("987654", reporter.clone());
+    let input = make_cursor("987654", &diag);
     let result = skip_whitespace(input.clone());
     assert_eq!(result, input); // No whitespace to skip, so it should return the original input
 }
