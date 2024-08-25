@@ -14,6 +14,7 @@ use  nom_locate::LocatedSpan;
 
 pub type LexToken<'a> = LocatedSpan<&'a str,LexTag>;
 
+#[allow(dead_code)]
 #[derive(Debug,PartialEq,Clone)]
 pub enum LexTag {
 	Comment(),
@@ -35,6 +36,7 @@ pub enum IntTag{
 	UnexpectedEnd(),	
 }
 
+#[allow(dead_code)]
 pub fn lext_text<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 	//TODO add extra token
 	alt((comment,name))(skip_whitespace(input))
