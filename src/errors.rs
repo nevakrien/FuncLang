@@ -6,6 +6,7 @@ use  nom_locate::LocatedSpan;
 pub enum UserSideError<'a> {
 	BadNumPostfix(LocatedSpan<&'a str>),
 	OverflowError(LocatedSpan<&'a str>,u64),
+	IntOverflowError(LocatedSpan<&'a str>,u64),
 }
 
 #[derive(Debug,PartialEq)]

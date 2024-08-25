@@ -1,14 +1,18 @@
 use nom::bytes::complete::{is_a,take_till,take_while,take_while1};
-use nom::sequence::{pair,preceded,terminated};
+use nom::sequence::{pair,preceded,delimited};
 use nom::combinator::recognize;
 use nom::character::complete::{digit1};
 
 use nom::multi::fold_many0;
 use nom::branch::alt;	
+use nom::character::complete::one_of;
 
 use crate::errors::{Cursor,CResult,strip_reporting,UserSideError};
 use nom::combinator::opt;
 use  nom_locate::LocatedSpan;
+use nom::InputTake;
+use nom::Offset;
+
 
 
 
@@ -19,27 +23,14 @@ pub type LexToken<'a> = LocatedSpan<&'a str,LexTag>;
 pub enum LexTag {
 	Comment(),
 	Word(),
-	Float(FloatTag),
-	Int(IntTag),
-}
-
-#[derive(Debug,PartialEq,Clone)]
-pub enum FloatTag{
-	Valid(f64),
-	UnexpectedEnd(),
-	JustDot(),	
-}
-
-#[derive(Debug,PartialEq,Clone)]
-pub enum IntTag{
-	Valid(i64),
-	UnexpectedEnd(),	
+	Float(f64),
+	Int(i64),
 }
 
 #[allow(dead_code)]
 pub fn lext_text<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 	//TODO add extra token
-	alt((comment,name))(skip_whitespace(input))
+	alt((lex_comment,lext_word))(skip_whitespace(input))
 }
 
 fn skip_whitespace<'a>(input: Cursor<'a>) -> Cursor<'a> {
@@ -51,9 +42,9 @@ fn skip_whitespace<'a>(input: Cursor<'a>) -> Cursor<'a> {
 	return ans;
 }
 
-fn comment<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
-	let (input,_)=is_a("#")(input)?;
-	terminated(
+fn lex_comment<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
+	delimited(
+		is_a("#"),
 		take_till(|c| c=='\n'),
 		take_while(|c| c=='\n')
 	)(input)	
@@ -62,7 +53,8 @@ fn comment<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 	)
 }
 
-fn name<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
+
+fn lext_word<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
 	recognize(pair(
 		take_while1(|c:char| c.is_alphabetic()   || c=='_'),
 		take_while( |c:char| c.is_alphanumeric() || c=='_')
@@ -71,6 +63,44 @@ fn name<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
 		(i,strip_reporting(x).map_extra(|()| LexTag::Word()))
 	)		
 }
+
+
+
+fn lex_int<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>> {
+    // Check for an optional sign
+    let (remaining_input, sign) = opt(one_of("+-"))(input.clone())?;
+    let (remaining_input, value) = uint_underscored(remaining_input)?;
+
+    let mut overflowed = false;
+    let signed_value = value.try_into().unwrap_or_else(|_| {
+        overflowed = true;
+        i64::MAX //probably not used
+    });
+
+    let signed_value = match sign {
+        Some('-') => -signed_value,
+        _ => signed_value, 
+    };
+
+    // Calculate the length of the consumed input including the sign
+    let consumed_len = input.offset(&remaining_input);
+    let (_, consumed_token) = input.take_split(consumed_len);
+    let token_base = strip_reporting(consumed_token);
+
+    if overflowed {
+    	input.extra.diag.report_error(UserSideError::IntOverflowError(
+            token_base.clone(), value)
+        );
+    }
+
+    let lex_token = token_base.map_extra(|()| {
+        LexTag::Int(signed_value)
+    });    
+
+    Ok((remaining_input, lex_token))
+}
+
+
 
 //does not handle error checking on the tail
 fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
@@ -98,7 +128,7 @@ fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
                 .unwrap_or_else(|| {
                 	overflowed = true;
                 	diag.report_error(UserSideError::OverflowError(report_input,acc));
-                	acc
+                	0//so that we dont have signed overflow causing a double report
                 })
         	}
 
@@ -113,8 +143,6 @@ fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
 
 #[cfg(test)]
 use crate::errors::Diagnostics;
-#[cfg(test)]
-use nom::InputTake;
 #[cfg(test)]
 use crate::errors::make_cursor;
 
@@ -141,6 +169,35 @@ fn test_uint_underscored_valid() {
     assert_eq!(
         result,
         Ok((input.take_split(6).0, 987654u64))
+    );
+}
+
+#[test]
+fn test_lex_int_with_signs() {
+    let diag = Diagnostics::new();
+
+    // Test positive number with explicit plus sign
+    let input = make_cursor("+1234", &diag);
+    let result = lex_int(input.clone());
+    assert_eq!(
+        result,
+        Ok((input.take_split(5).0, strip_reporting(input.take_split(5).1).map_extra(|()| LexTag::Int(1234))))
+    );
+
+    // Test negative number
+    let input = make_cursor("-5678", &diag);
+    let result = lex_int(input.clone());
+    assert_eq!(
+        result,
+        Ok((input.take_split(5).0, strip_reporting(input.take_split(5).1).map_extra(|()| LexTag::Int(-5678))))
+    );
+
+    // Test number without sign (implicit positive)
+    let input = make_cursor("9876", &diag);
+    let result = lex_int(input.clone());
+    assert_eq!(
+        result,
+        Ok((input.take_split(4).0, strip_reporting(input.take_split(4).1).map_extra(|()| LexTag::Int(9876))))
     );
 }
 
