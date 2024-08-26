@@ -1,4 +1,4 @@
-use nom::bytes::complete::{is_a,take_till,take_while,take_while1};
+use nom::bytes::complete::{is_a,take_till,take_while,take_while1,tag};
 use nom::sequence::{pair,preceded,delimited};
 use nom::combinator::recognize;
 use nom::character::complete::{digit1};
@@ -18,6 +18,29 @@ use nom::Offset;
 
 pub type LexToken<'a> = LocatedSpan<&'a str,LexTag>;
 
+#[derive(Debug,PartialEq,Clone)]
+pub enum BinaryOp {
+	Pip,
+	Exp,
+	Add,
+	Sub,
+	Mul,
+	Div,
+	Mod,
+	Or,
+	And,
+	OneEqul,
+	TwoEqul,
+	NotEqual,
+	SmallerEqual,
+	Smaller,
+	Bigger,
+	BiggerEqual,
+	FatArrow,
+	SmallArrow,
+	Dot,
+}
+
 #[allow(dead_code)]
 #[derive(Debug,PartialEq,Clone)]
 pub enum LexTag {
@@ -26,6 +49,7 @@ pub enum LexTag {
 	Float(f64),
 	Int(i64),
 	Delimiter(char),
+	Op(BinaryOp),
 	String(),
 }
 
@@ -36,6 +60,7 @@ pub fn lext_text<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 	alt((
 		lex_word,
 		lex_delimiter,
+		lex_operator,
 		lex_comment,
 		lex_number,
 	))(skip_whitespace(input))
@@ -56,6 +81,63 @@ fn lex_delimiter<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 		LexTag::Delimiter(token.fragment().chars().next().unwrap())
 	});
 	Ok((input,ans))
+}
+
+fn lex_operator<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>> {
+    let (input, token) = alt((
+        // 1. Single-char operators with no associated double-char version
+        recognize(one_of("+/.%^")),
+
+        // 2. Multi-character operators
+        recognize(tag("|>")),
+        recognize(tag("**")),
+        recognize(tag("&&")),
+        recognize(tag("||")),
+        recognize(tag("==")),
+        recognize(tag("!=")),
+        recognize(tag("<=")),
+        recognize(tag(">=")),
+        recognize(tag("=>")),
+        recognize(tag("->")),
+
+        // 3. Remaining single-char operators
+        recognize(one_of("-<>=*")),
+    ))(input)?;
+
+    let op_tag = match *token.fragment() {
+        // Single-char operators 
+        "+" => LexTag::Op(BinaryOp::Add),
+        "-" => LexTag::Op(BinaryOp::Sub),
+        "*" => LexTag::Op(BinaryOp::Mul),
+        "/" => LexTag::Op(BinaryOp::Div),
+
+        "%" => LexTag::Op(BinaryOp::Mod),
+
+        "**" | "^" => LexTag::Op(BinaryOp::Exp),
+
+
+        "<" => LexTag::Op(BinaryOp::Smaller),
+        ">" => LexTag::Op(BinaryOp::Bigger),
+        "=" => LexTag::Op(BinaryOp::OneEqul),
+        
+        "." => LexTag::Op(BinaryOp::Dot),
+
+        // Multi-char operators
+        "|>" => LexTag::Op(BinaryOp::Pip),
+        "&&" => LexTag::Op(BinaryOp::And),
+        "||" => LexTag::Op(BinaryOp::Or),
+        "==" => LexTag::Op(BinaryOp::TwoEqul),
+        "!=" => LexTag::Op(BinaryOp::NotEqual),
+        "<=" => LexTag::Op(BinaryOp::SmallerEqual),
+        ">=" => LexTag::Op(BinaryOp::BiggerEqual),
+        "=>" => LexTag::Op(BinaryOp::FatArrow),
+        "->" => LexTag::Op(BinaryOp::SmallArrow),
+        
+        _ => unreachable!(),
+    };
+
+    let ans = strip_reporting(token.clone()).map_extra(|()| op_tag);
+    Ok((input, ans))
 }
 
 fn lex_comment<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
@@ -322,4 +404,47 @@ fn test_lex_invalid_token_error() {
     
     // This should fail because `{` is an invalid token
     assert!(result.is_err());
+}
+
+#[cfg(test)]
+fn assert_operator(input: &str, expected_tag: LexTag) {
+    let diag = Diagnostics::new();
+    let cursor = make_cursor(input, &diag);
+    let result = lex_operator(cursor);
+
+    assert!(result.is_ok(), "Failed to parse operator: {}", input);
+    let (_, token) = result.unwrap();
+    assert_eq!(token.extra, expected_tag, "Expected {:?} but got {:?}", expected_tag, token.extra);
+}
+
+#[test]
+fn test_single_char_operators() {
+    assert_operator("+", LexTag::Op(BinaryOp::Add));
+    assert_operator("-", LexTag::Op(BinaryOp::Sub));
+    assert_operator("*", LexTag::Op(BinaryOp::Mul));
+    assert_operator("/", LexTag::Op(BinaryOp::Div));
+    assert_operator("%", LexTag::Op(BinaryOp::Mod));
+    assert_operator(".", LexTag::Op(BinaryOp::Dot));
+    assert_operator("^", LexTag::Op(BinaryOp::Exp));
+}
+
+#[test]
+fn test_multi_char_operators() {
+    assert_operator("|>", LexTag::Op(BinaryOp::Pip));
+    assert_operator("**", LexTag::Op(BinaryOp::Exp));
+    assert_operator("&&", LexTag::Op(BinaryOp::And));
+    assert_operator("||", LexTag::Op(BinaryOp::Or));
+    assert_operator("==", LexTag::Op(BinaryOp::TwoEqul));
+    assert_operator("!=", LexTag::Op(BinaryOp::NotEqual));
+    assert_operator("<=", LexTag::Op(BinaryOp::SmallerEqual));
+    assert_operator(">=", LexTag::Op(BinaryOp::BiggerEqual));
+    assert_operator("=>", LexTag::Op(BinaryOp::FatArrow));
+    assert_operator("->", LexTag::Op(BinaryOp::SmallArrow));
+}
+
+#[test]
+fn test_comparison_operators() {
+    assert_operator("<", LexTag::Op(BinaryOp::Smaller));
+    assert_operator(">", LexTag::Op(BinaryOp::Bigger));
+    assert_operator("=", LexTag::Op(BinaryOp::OneEqul));
 }
