@@ -55,7 +55,7 @@ pub enum LexTag {
 	Int(i64),
 	Delimiter(char),
 	Op(BinaryOp),
-	String(),
+	String(char),
 }
 
 #[allow(dead_code)]
@@ -206,7 +206,7 @@ fn lex_string<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
         Ok(u) => {
             let (input,ans) = original_input.take_split(u+1);//original del dels
             Ok((input,ans.map_extra(|_| {
-                LexTag::String()
+                LexTag::String(del)
             })))    
         }
         Err((u,c)) => {
@@ -216,7 +216,7 @@ fn lex_string<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
             ));
 
             Ok((input,ans.map_extra(|_| {
-                LexTag::String()
+                LexTag::String(del)
             })))
         }
     }
@@ -517,7 +517,7 @@ fn test_lex_string() {
     let result = lex_string(input.clone());
     assert!(result.is_ok(), "Failed to parse valid string");
     let (remaining, token) = result.unwrap();
-    assert_eq!(token.extra, LexTag::String());
+    assert_eq!(token.extra, LexTag::String('"'));
     assert_eq!(token.fragment(), &"\"Hello, world!\\n\"");
     assert_eq!(remaining.fragment().len(), 5, "Unexpected characters remaining after parsing a valid string");
 
@@ -526,7 +526,7 @@ fn test_lex_string() {
     let result = lex_string(input.clone());
     assert!(result.is_ok(), "Should return a token despite being unclosed");
     let (_, token) = result.unwrap();
-    assert_eq!(token.extra, LexTag::String());
+    assert_eq!(token.extra, LexTag::String('"'));
     assert_eq!(token.fragment(), &"\"Unclosed string example");
     assert!(!diag.errors.borrow().is_empty(), "Should log an error for unclosed string");
 
@@ -535,7 +535,7 @@ fn test_lex_string() {
     let result = lex_string(input.clone());
     assert!(result.is_ok(), "Failed to parse single character string");
     let (remaining, token) = result.unwrap();
-    assert_eq!(token.extra, LexTag::String());
+    assert_eq!(token.extra, LexTag::String('\''));
     assert_eq!(token.fragment(), &"'a'");
     assert_eq!(remaining.fragment().len(), 0, "Unexpected characters remaining after parsing a single character string");
 
@@ -544,7 +544,7 @@ fn test_lex_string() {
     let result = lex_string(input.clone());
     assert!(result.is_ok(), "Failed to parse string with escaped quote");
     let (remaining, token) = result.unwrap();
-    assert_eq!(token.extra, LexTag::String());
+    assert_eq!(token.extra, LexTag::String('"'));
     assert_eq!(token.fragment(), &"\"Escaped \\\" quote\"");
     assert_eq!(remaining.fragment().len(), 0, "Unexpected characters remaining after parsing a string with escaped quote");
 
@@ -553,7 +553,7 @@ fn test_lex_string() {
     let result = lex_string(input.clone());
     assert!(result.is_ok(), "Failed to parse string with newlines and tabs");
     let (remaining, token) = result.unwrap();
-    assert_eq!(token.extra, LexTag::String());
+    assert_eq!(token.extra, LexTag::String('"'));
     assert_eq!(token.fragment(), &"\"Line1\\nLine2\\tTabbed\"");
     assert_eq!(remaining.fragment().len(), 0, "Unexpected characters remaining after parsing a string with newlines and tabs");
 }
