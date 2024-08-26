@@ -59,6 +59,7 @@ pub enum LexTag {
 	Float(f64),
 	Int(i64),
 	Delimiter(char),
+    Ender(char),
 
 	Op(BinaryOp),
 	String(char),
@@ -70,7 +71,8 @@ pub fn lext_text<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 	//order is from most common to least
 	alt((
 		lex_word,
-        lex_atoms,
+        lex_atom,
+        lex_ender,
 		lex_delimiter,
 		lex_operator,
 		lex_comment,
@@ -79,7 +81,7 @@ pub fn lext_text<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 	))(skip_whitespace(input))
 }
 
-fn lex_atoms<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
+fn lex_atom<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
     let (input,s) = recognize(preceded(
         one_of("%:"),
         pair(
@@ -108,6 +110,14 @@ fn lex_delimiter<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 		LexTag::Delimiter(token.fragment().chars().next().unwrap())
 	});
 	Ok((input,ans))
+}
+
+fn lex_ender<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
+    let(input,token) = recognize(one_of(";,"))(input)?;
+    let ans = strip_reporting(token.clone()).map_extra(|()| {
+        LexTag::Ender(token.fragment().chars().next().unwrap())
+    });
+    Ok((input,ans))
 }
 
 fn lex_operator<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>> {
@@ -592,7 +602,7 @@ fn test_lex_text_happy_path() {
     let diag = Diagnostics::new();
 
     // Prepare an input that combines words, operators, strings, numbers, and comments
-    let mut remaining = make_cursor("func + 123 / 2.11_2\"string\" # aa \" {}comment \n %atom :: :atom", &diag);
+    let mut remaining = make_cursor("func + 123 / 2.11_2; 1.\"string\" # aa \" {}comment \n %atom :: :atom", &diag);
 
     // Expected sequence of tokens
     let expected = vec![
@@ -601,6 +611,8 @@ fn test_lex_text_happy_path() {
         LexTag::Int(123),                   // '123'
         LexTag::Op(BinaryOp::Div), 
         LexTag::Float(2.112),
+        LexTag::Ender(';'),
+        LexTag::Float(1.),
         LexTag::String('"'),                // '"string"'
         LexTag::Comment(),                  // '// comment'
         LexTag::Atom(),                     // ':atom'
@@ -619,4 +631,6 @@ fn test_lex_text_happy_path() {
 
     // Check that there are no more tokens left after parsing
     assert_eq!(remaining.fragment().len(), 0, "Unexpected characters remaining after parsing all tokens");
+    assert_eq!(diag.errors.borrow().len(), 0, "Unexpected errors");
+    assert_eq!(diag.warnings.borrow().len(), 0, "Unexpected warnings");
 }
