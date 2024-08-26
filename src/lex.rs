@@ -20,10 +20,10 @@ pub type LexToken<'a> = LocatedSpan<&'a str,LexTag>;
 
 #[derive(Debug,PartialEq,Clone)]
 pub enum BinaryOp {
-	Dots,//handled with atoms
-
     Pip,
 	Dot,
+    Dots,
+    DoubleDots,
 
 	Add,
 	Sub,
@@ -70,7 +70,7 @@ pub fn lext_text<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 	//order is from most common to least
 	alt((
 		lex_word,
-        lex_dots_atoms,
+        lex_atoms,
 		lex_delimiter,
 		lex_operator,
 		lex_comment,
@@ -79,30 +79,18 @@ pub fn lext_text<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 	))(skip_whitespace(input))
 }
 
-fn lex_dots_atoms<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
+fn lex_atoms<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
     let (input,s) = recognize(preceded(
-        nom_char(':'),
-        opt(pair(
+        one_of("%:"),
+        pair(
             take_while1(|c:char| c.is_alphabetic()   || c=='_'),
             take_while( |c:char| c.is_alphanumeric() || c=='_')
-        ))
+        )
     ))(input)?;
-
-     match s.fragment().len() {
-        0usize => unreachable!(),
-        1 => {
-            let ans = strip_reporting(s).map_extra(|()| {
-                LexTag::Op(BinaryOp::Dots)
-            });
-            Ok((input, ans))
-        },
-        _=> {
-            let ans = strip_reporting(s).map_extra(|()| {
-                LexTag::Atom()
-            });
-            Ok((input, ans))
-        },
-    }
+    let ans = strip_reporting(s).map_extra(|()| {
+        LexTag::Atom()
+    });
+    Ok((input, ans))
 }
 
 fn skip_whitespace<'a>(input: Cursor<'a>) -> Cursor<'a> {
@@ -138,9 +126,10 @@ fn lex_operator<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>> {
         recognize(tag(">=")),
         recognize(tag("=>")),
         recognize(tag("->")),
+        recognize(tag("::")),
 
         // 3. Remaining single-char operators
-        recognize(one_of("-=*<>|")),
+        recognize(one_of("-=*<>|:")),
     ))(input)?;
 
     let op_tag = match *token.fragment() {
@@ -149,6 +138,9 @@ fn lex_operator<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>> {
         "-" => LexTag::Op(BinaryOp::Sub),
         "*" => LexTag::Op(BinaryOp::Mul),
         "/" => LexTag::Op(BinaryOp::Div),
+
+        "::" => LexTag::Op(BinaryOp::DoubleDots),
+        ":" => LexTag::Op(BinaryOp::Dots),
 
         "%" => LexTag::Op(BinaryOp::Mod),
 
@@ -596,7 +588,7 @@ fn test_lex_text_happy_path() {
     let diag = Diagnostics::new();
 
     // Prepare an input that combines words, operators, strings, numbers, and comments
-    let mut remaining = make_cursor("func + 123 / 2.11_2\"string\" # aa \" {}comment \n :atom", &diag);
+    let mut remaining = make_cursor("func + 123 / 2.11_2\"string\" # aa \" {}comment \n %atom :: :atom", &diag);
 
     // Expected sequence of tokens
     let expected = vec![
@@ -608,6 +600,8 @@ fn test_lex_text_happy_path() {
         LexTag::String('"'),                // '"string"'
         LexTag::Comment(),                  // '// comment'
         LexTag::Atom(),                     // ':atom'
+        LexTag::Op(BinaryOp::DoubleDots),
+        LexTag::Atom(),
     ];
 
     // Test parsing sequence
