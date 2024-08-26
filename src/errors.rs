@@ -7,6 +7,9 @@ pub enum UserSideError<'a> {
 	BadNumPostfix(LocatedSpan<&'a str>),
 	OverflowError(LocatedSpan<&'a str>,u64),
 	IntOverflowError(LocatedSpan<&'a str>,u64),
+
+	UnclosedString(LocatedSpan<&'a str>,char),
+
 }
 
 #[derive(Debug,PartialEq)]
@@ -16,8 +19,8 @@ pub enum UserSideWarning<'a> {
 
 #[derive(Debug,PartialEq)]
 pub struct Diagnostics<'a>{
-	errors: RefCell<Vec<UserSideError<'a>>>,
-	warnings: RefCell<Vec<UserSideWarning<'a>>>
+	pub errors: RefCell<Vec<UserSideError<'a>>>,
+	pub warnings: RefCell<Vec<UserSideWarning<'a>>>
 }
 
 impl<'a> Diagnostics<'a>{
