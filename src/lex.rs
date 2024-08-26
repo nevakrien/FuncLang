@@ -25,12 +25,20 @@ pub enum LexTag {
 	Word(),
 	Float(f64),
 	Int(i64),
+	Delimiter(char),
+	String(),
 }
 
 #[allow(dead_code)]
 pub fn lext_text<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 	//TODO add extra token
-	alt((lex_comment,lext_word))(skip_whitespace(input))
+	//order is from most common to least
+	alt((
+		lex_word,
+		lex_delimiter,
+		lex_comment,
+		lex_number,
+	))(skip_whitespace(input))
 }
 
 fn skip_whitespace<'a>(input: Cursor<'a>) -> Cursor<'a> {
@@ -40,6 +48,14 @@ fn skip_whitespace<'a>(input: Cursor<'a>) -> Cursor<'a> {
 	let s=opt(typed_take_whitespace)(input);
 	let(ans,_)=s.unwrap();
 	return ans;
+}
+
+fn lex_delimiter<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
+	let(input,token) = recognize(one_of("{}[]()"))(input)?;
+	let ans = strip_reporting(token.clone()).map_extra(|()| {
+		LexTag::Delimiter(token.fragment().chars().next().unwrap())
+	});
+	Ok((input,ans))
 }
 
 fn lex_comment<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
@@ -54,7 +70,7 @@ fn lex_comment<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 }
 
 
-fn lext_word<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
+fn lex_word<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
 	recognize(pair(
 		take_while1(|c:char| c.is_alphabetic()   || c=='_'),
 		take_while( |c:char| c.is_alphanumeric() || c=='_')
@@ -64,43 +80,80 @@ fn lext_word<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
 	)		
 }
 
-
-
-fn lex_int<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>> {
-    // Check for an optional sign
-    let (remaining_input, sign) = opt(one_of("+-"))(input.clone())?;
-    let (remaining_input, value) = uint_underscored(remaining_input)?;
-
-    let mut overflowed = false;
-    let signed_value = value.try_into().unwrap_or_else(|_| {
-        overflowed = true;
-        i64::MAX //probably not used
-    });
-
-    let signed_value = match sign {
-        Some('-') => -signed_value,
-        _ => signed_value, 
-    };
-
-    // Calculate the length of the consumed input including the sign
-    let consumed_len = input.offset(&remaining_input);
-    let (_, consumed_token) = input.take_split(consumed_len);
-    let token_base = strip_reporting(consumed_token);
-
-    if overflowed {
-    	input.extra.diag.report_error(UserSideError::IntOverflowError(
-            token_base.clone(), value)
-        );
+fn after_dot_to_float(digits: u64) -> f64 {
+    if digits == 0 {
+        return 0.0;
     }
 
-    let lex_token = token_base.map_extra(|()| {
-        LexTag::Int(signed_value)
-    });    
+    // Calculate the number of digits using logarithm
+    let num_digits = (digits as f64).log10().floor() as u32 + 1;
 
-    Ok((remaining_input, lex_token))
+    // Calculate the divisor
+    let divisor = 10_u64.pow(num_digits);
+
+    // Convert to fraction
+    digits as f64 / divisor as f64
 }
 
+fn lex_number<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>>{
+	let (remaining_input, sign_char) = opt(one_of("+-"))(input.clone())?;
+    let (remaining_input, value) = uint_underscored(remaining_input)?;
+    let (remaining_input,dot) = opt(is_a("."))(remaining_input)?;
 
+    let sign = match sign_char {
+        Some('-') => -1i64,
+        _ => 1i64, 
+    };
+
+    
+
+    match dot {
+    	None => {
+
+    		let consumed_len = input.offset(&remaining_input);
+    		let (_, consumed_token) = input.take_split(consumed_len);
+    		let token_base = strip_reporting(consumed_token);
+			
+			let signed_value = sign*value.try_into().unwrap_or_else(|_| {
+    			input.extra.diag.report_error(
+    				UserSideError::IntOverflowError(
+            			token_base.clone(), 
+            			value
+            		)
+            	);
+   				i64::MAX //probably not used
+			});
+
+			let lex_token = token_base.map_extra(|()| {
+			    LexTag::Int(signed_value)
+			});    
+
+    		Ok((remaining_input, lex_token))
+    	}
+    	Some(_) => {
+    		match uint_underscored(remaining_input){
+    			Err(_) => {
+    				todo!("handle just dot");
+    			},
+    			Ok((remaining_input,after_dot)) => {
+    				let mut fval=value as f64;
+    				fval+=after_dot_to_float(after_dot);
+    				fval*=sign as f64;
+
+    				let consumed_len = input.offset(&remaining_input);
+    				let (_, consumed_token) = input.take_split(consumed_len);
+    				let token_base = strip_reporting(consumed_token);
+    				
+    				let lex_token = token_base.map_extra(|()| {
+			    		LexTag::Float(fval)
+					});    
+
+    				Ok((remaining_input, lex_token))
+    			}
+    		}
+    	}
+    }
+}
 
 //does not handle error checking on the tail
 fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
@@ -128,7 +181,7 @@ fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
                 .unwrap_or_else(|| {
                 	overflowed = true;
                 	diag.report_error(UserSideError::OverflowError(report_input,acc));
-                	0//so that we dont have signed overflow causing a double report
+                	i64::MAX.try_into().unwrap()//so that we dont have signed overflow causing a double report
                 })
         	}
 
@@ -178,7 +231,7 @@ fn test_lex_int_with_signs() {
 
     // Test positive number with explicit plus sign
     let input = make_cursor("+1234", &diag);
-    let result = lex_int(input.clone());
+    let result = lex_number(input.clone());
     assert_eq!(
         result,
         Ok((input.take_split(5).0, strip_reporting(input.take_split(5).1).map_extra(|()| LexTag::Int(1234))))
@@ -186,7 +239,7 @@ fn test_lex_int_with_signs() {
 
     // Test negative number
     let input = make_cursor("-5678", &diag);
-    let result = lex_int(input.clone());
+    let result = lex_number(input.clone());
     assert_eq!(
         result,
         Ok((input.take_split(5).0, strip_reporting(input.take_split(5).1).map_extra(|()| LexTag::Int(-5678))))
@@ -194,7 +247,7 @@ fn test_lex_int_with_signs() {
 
     // Test number without sign (implicit positive)
     let input = make_cursor("9876", &diag);
-    let result = lex_int(input.clone());
+    let result = lex_number(input.clone());
     assert_eq!(
         result,
         Ok((input.take_split(4).0, strip_reporting(input.take_split(4).1).map_extra(|()| LexTag::Int(9876))))
@@ -256,7 +309,7 @@ fn test_lex_basic_string_with_names_and_comments() {
 fn test_lex_invalid_token_error() {
     let diag = Diagnostics::new();
 
-    let input = make_cursor("name1 { name2", &diag);
+    let input = make_cursor("name1 🏳️‍⚧️ name2", &diag);
     let result = lext_text(input);
 
     assert!(result.is_ok());
