@@ -7,7 +7,7 @@ use nom::multi::fold_many0;
 use nom::branch::alt;	
 use nom::character::complete::one_of;
 
-use nom::character::complete::char as nom_char;
+// use nom::character::complete::char as nom_char;
 
 use crate::errors::{Cursor,CResult,strip_reporting,UserSideError};
 use nom::combinator::{opt};
@@ -297,27 +297,31 @@ fn lex_number<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>>{
 
     		Ok((remaining_input, lex_token))
     	}
+
     	Some(_) => {
-    		match uint_underscored(remaining_input){
+            let mut fval=value as f64;
+
+    		let remaining_input=match uint_underscored(remaining_input.clone()){
     			Err(_) => {
-    				todo!("handle just dot");
+    				remaining_input
     			},
     			Ok((remaining_input,after_dot)) => {
-    				let mut fval=value as f64;
-    				fval+=after_dot_to_float(after_dot);
-    				fval*=sign as f64;
-
-    				let consumed_len = input.offset(&remaining_input);
-    				let (_, consumed_token) = input.take_split(consumed_len);
-    				let token_base = strip_reporting(consumed_token);
     				
-    				let lex_token = token_base.map_extra(|()| {
-			    		LexTag::Float(fval)
-					});    
-
-    				Ok((remaining_input, lex_token))
+    				fval+=after_dot_to_float(after_dot);
+                    remaining_input
     			}
-    		}
+    		};
+            fval*=sign as f64;
+
+            let consumed_len = input.offset(&remaining_input);
+            let (_, consumed_token) = input.take_split(consumed_len);
+            let token_base = strip_reporting(consumed_token);
+            
+            let lex_token = token_base.map_extra(|()| {
+                LexTag::Float(fval)
+            });    
+
+            Ok((remaining_input, lex_token))
     	}
     }
 }
