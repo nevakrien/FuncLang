@@ -21,12 +21,19 @@ pub type LexToken<'a> = LocatedSpan<&'a str,LexTag>;
 #[derive(Debug,PartialEq,Clone)]
 pub enum BinaryOp {
 	Pip,
-	Exp,
+	Dot,
+
 	Add,
 	Sub,
 	Mul,
 	Div,
 	Mod,
+	Exp,
+
+	FatArrow,
+	SmallArrow,
+	SingleOr,
+
 	Or,
 	And,
 	OneEqul,
@@ -36,9 +43,7 @@ pub enum BinaryOp {
 	Smaller,
 	Bigger,
 	BiggerEqual,
-	FatArrow,
-	SmallArrow,
-	Dot,
+	
 }
 
 #[allow(dead_code)]
@@ -101,7 +106,7 @@ fn lex_operator<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>> {
         recognize(tag("->")),
 
         // 3. Remaining single-char operators
-        recognize(one_of("-<>=*")),
+        recognize(one_of("-=*<>|")),
     ))(input)?;
 
     let op_tag = match *token.fragment() {
@@ -121,6 +126,7 @@ fn lex_operator<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>> {
         "=" => LexTag::Op(BinaryOp::OneEqul),
         
         "." => LexTag::Op(BinaryOp::Dot),
+        "|" => LexTag::Op(BinaryOp::SingleOr),
 
         // Multi-char operators
         "|>" => LexTag::Op(BinaryOp::Pip),
@@ -426,6 +432,12 @@ fn test_single_char_operators() {
     assert_operator("%", LexTag::Op(BinaryOp::Mod));
     assert_operator(".", LexTag::Op(BinaryOp::Dot));
     assert_operator("^", LexTag::Op(BinaryOp::Exp));
+    assert_operator("|", LexTag::Op(BinaryOp::SingleOr));
+
+
+    assert_operator("<", LexTag::Op(BinaryOp::Smaller));
+    assert_operator(">", LexTag::Op(BinaryOp::Bigger));
+    assert_operator("=", LexTag::Op(BinaryOp::OneEqul));
 }
 
 #[test]
@@ -442,9 +454,3 @@ fn test_multi_char_operators() {
     assert_operator("->", LexTag::Op(BinaryOp::SmallArrow));
 }
 
-#[test]
-fn test_comparison_operators() {
-    assert_operator("<", LexTag::Op(BinaryOp::Smaller));
-    assert_operator(">", LexTag::Op(BinaryOp::Bigger));
-    assert_operator("=", LexTag::Op(BinaryOp::OneEqul));
-}
