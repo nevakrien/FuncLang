@@ -7,7 +7,7 @@ use nom::multi::fold_many0;
 use nom::branch::alt;	
 use nom::character::complete::one_of;
 
-// use nom::character::complete::char as nom_char;
+use nom::character::complete::char as nom_char;
 
 use crate::errors::{Cursor,CResult,strip_reporting,UserSideError};
 use nom::combinator::{opt};
@@ -20,7 +20,9 @@ pub type LexToken<'a> = LocatedSpan<&'a str,LexTag>;
 
 #[derive(Debug,PartialEq,Clone)]
 pub enum BinaryOp {
-	Pip,
+	Dots,//handled with atoms
+
+    Pip,
 	Dot,
 
 	Add,
@@ -51,9 +53,13 @@ pub enum BinaryOp {
 pub enum LexTag {
 	Comment(),
 	Word(),
+    Atom(),
+
+
 	Float(f64),
 	Int(i64),
 	Delimiter(char),
+
 	Op(BinaryOp),
 	String(char),
 }
@@ -64,12 +70,39 @@ pub fn lext_text<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 	//order is from most common to least
 	alt((
 		lex_word,
+        lex_dots_atoms,
 		lex_delimiter,
 		lex_operator,
 		lex_comment,
 		lex_number,
         lex_string,
 	))(skip_whitespace(input))
+}
+
+fn lex_dots_atoms<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
+    let (input,s) = recognize(preceded(
+        nom_char(':'),
+        opt(pair(
+            take_while1(|c:char| c.is_alphabetic()   || c=='_'),
+            take_while( |c:char| c.is_alphanumeric() || c=='_')
+        ))
+    ))(input)?;
+
+     match s.fragment().len() {
+        0usize => unreachable!(),
+        1 => {
+            let ans = strip_reporting(s).map_extra(|()| {
+                LexTag::Op(BinaryOp::Dots)
+            });
+            Ok((input, ans))
+        },
+        _=> {
+            let ans = strip_reporting(s).map_extra(|()| {
+                LexTag::Atom()
+            });
+            Ok((input, ans))
+        },
+    }
 }
 
 fn skip_whitespace<'a>(input: Cursor<'a>) -> Cursor<'a> {
@@ -556,4 +589,36 @@ fn test_lex_string() {
     assert_eq!(token.extra, LexTag::String('"'));
     assert_eq!(token.fragment(), &"\"Line1\\nLine2\\tTabbed\"");
     assert_eq!(remaining.fragment().len(), 0, "Unexpected characters remaining after parsing a string with newlines and tabs");
+}
+
+#[test]
+fn test_lex_text_happy_path() {
+    let diag = Diagnostics::new();
+
+    // Prepare an input that combines words, operators, strings, numbers, and comments
+    let mut remaining = make_cursor("func + 123 / 2.11_2\"string\" # aa \" {}comment \n :atom", &diag);
+
+    // Expected sequence of tokens
+    let expected = vec![
+        LexTag::Word(),                      // 'func'
+        LexTag::Op(BinaryOp::Add),          // '+'
+        LexTag::Int(123),                   // '123'
+        LexTag::Op(BinaryOp::Div), 
+        LexTag::Float(2.112),
+        LexTag::String('"'),                // '"string"'
+        LexTag::Comment(),                  // '// comment'
+        LexTag::Atom(),                     // ':atom'
+    ];
+
+    // Test parsing sequence
+    for expected_tag in expected {
+        let result = lext_text(remaining);
+        assert!(result.is_ok(), "Failed to parse expected token: {:?}", expected_tag);
+        let (new_remaining, token) = result.unwrap();
+        assert_eq!(token.extra, expected_tag, "Parsed token does not match expected. Expected {:?}, found {:?}", expected_tag, token.extra);
+        remaining = new_remaining;  // Update remaining input for the next token
+    }
+
+    // Check that there are no more tokens left after parsing
+    assert_eq!(remaining.fragment().len(), 0, "Unexpected characters remaining after parsing all tokens");
 }
