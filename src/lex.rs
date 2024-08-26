@@ -462,7 +462,7 @@ fn test_lex_invalid_token_error() {
 
     let result = lext_text(remaining);
     
-    // This should fail because `{` is an invalid token
+    // This should fail because `🏳️‍⚧️` is an invalid token (for now)
     assert!(result.is_err());
 }
 
