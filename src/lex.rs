@@ -532,8 +532,15 @@ fn test_lex_invalid_token_error() {
     let result = lext_text(remaining);
     
     // This should fail because `🏳️‍⚧️` is an invalid token (for now)
-    let (_, token2) = result.unwrap();
+    let (remaining, token2) = result.unwrap();
     assert_eq!(token2.extra, LexTag::Unknowen());
+
+    let (_, token3)=lext_text(remaining).unwrap(); 
+    //depending on if the unknowen handeling is good or not. token3 can be anything
+    match token3.extra {
+        LexTag::Unknowen() | LexTag::Word() => {},
+        _ => unreachable!("Unexpected tag"),
+    };
 }
 
 #[cfg(test)]
