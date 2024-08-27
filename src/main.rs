@@ -1,5 +1,6 @@
 mod lex;
 mod errors;
+mod token;
 use crate::lex::lex_full_text;
 use crate::errors::{Diagnostics};  
 

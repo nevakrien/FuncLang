@@ -11,66 +11,16 @@ use nom::branch::alt;
 use crate::errors::{Cursor,CResult,strip_reporting,UserSideError};
 use nom::combinator::{opt};
 // use nom::bytes::complete::is_not;
-use  nom_locate::LocatedSpan;
 use nom::InputTake;
 use nom::Offset;
 
 use crate::errors::{Diagnostics,make_cursor};
 
-pub type LexToken<'a> = LocatedSpan<&'a str,LexTag>;
+use crate::token::{LexToken,BinaryOp,LexTag};
 
-#[derive(Debug,PartialEq,Clone)]
-pub enum BinaryOp {
-    Pipe,
-	Dot,
-    Dots,
-    DoubleDots,
-
-	Add,
-	Sub,
-	Mul,
-	Div,
-	Mod,
-	Exp,
-
-	FatArrow,
-	SmallArrow,
-	SingleOr,
-
-	Or,
-	And,
-    Xor,
-	OneEqul,
-	TwoEqul,
-	NotEqual,
-	SmallerEqual,
-	Smaller,
-	Bigger,
-	BiggerEqual,
-	
-}
-
+#[no_mangle]
 #[allow(dead_code)]
-#[derive(Debug,PartialEq,Clone)]
-pub enum LexTag {
-	Comment(),
-	Word(),
-    Atom(),
-
-
-	Float(f64),
-	Int(i64),
-	Delimiter(char),
-    Ender(char),
-
-	Op(BinaryOp),
-	String(char),
-    
-    Unknowen(),
-}
-
-#[allow(dead_code)]
-pub fn lex_full_text<'a>(input: &'a str,diag :&'a Diagnostics<'a>) -> Vec<LocatedSpan<&'a str, LexTag>> {
+pub fn lex_full_text<'a>(input: &'a str,diag :&'a Diagnostics<'a>) -> Vec<LexToken<'a>> {
     let mut cursor = make_cursor(input,diag);
     let mut ans = Vec::new();
     loop {
@@ -107,7 +57,7 @@ pub fn lext_text<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 fn lex_unknowen<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
     let (input,x)=recognize(pair(anychar,take_while(|c:char| !c.is_ascii())))(input)?;
     let ans = strip_reporting(x).map_extra(|()| LexTag::Unknowen());
-    Ok((input,ans))
+    Ok((input,LexToken::new(ans)))
 }
 
 fn lex_atom<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
@@ -121,7 +71,7 @@ fn lex_atom<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
     let ans = strip_reporting(s).map_extra(|()| {
         LexTag::Atom()
     });
-    Ok((input, ans))
+    Ok((input, LexToken::new(ans)))
 }
 
 fn skip_whitespace<'a>(input: Cursor<'a>) -> Cursor<'a> {
@@ -138,7 +88,7 @@ fn lex_delimiter<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 	let ans = strip_reporting(token.clone()).map_extra(|()| {
 		LexTag::Delimiter(token.fragment().chars().next().unwrap())
 	});
-	Ok((input,ans))
+	Ok((input,LexToken::new(ans)))
 }
 
 fn lex_ender<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
@@ -146,7 +96,7 @@ fn lex_ender<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
     let ans = strip_reporting(token.clone()).map_extra(|()| {
         LexTag::Ender(token.fragment().chars().next().unwrap())
     });
-    Ok((input,ans))
+    Ok((input,LexToken::new(ans)))
 }
 
 fn lex_operator<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>> {
@@ -210,7 +160,7 @@ fn lex_operator<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>> {
     };
 
     let ans = strip_reporting(token.clone()).map_extra(|()| op_tag);
-    Ok((input, ans))
+    Ok((input, LexToken::new(ans)))
 }
 
 fn lex_comment<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
@@ -220,7 +170,7 @@ fn lex_comment<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 		// take_while(|c| c=='\n')
 	))(input)	
 	.map(|(i,x)| 
-		(i,strip_reporting(x).map_extra(|()| LexTag::Comment()))
+		(i,LexToken::new(strip_reporting(x).map_extra(|()| LexTag::Comment())))
 	)
 }
 
@@ -231,7 +181,7 @@ fn lex_word<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
 		take_while( |c:char| c.is_alphanumeric() || c=='_')
 	))(input)
 	.map(|(i,x)| 
-		(i,strip_reporting(x).map_extra(|()| LexTag::Word()))
+		(i,LexToken::new(strip_reporting(x).map_extra(|()| LexTag::Word())))
 	)		
 }
 
@@ -271,9 +221,9 @@ fn lex_string<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
     match skip_to_str_end(input.fragment(),del) {
         Ok(u) => {
             let (input,ans) = original_input.take_split(u+1);//original del dels
-            Ok((input,ans.map_extra(|_| {
+            Ok((input,LexToken::new(ans.map_extra(|_| {
                 LexTag::String(del)
-            })))    
+            }))))    
         }
         Err((u,c)) => {
             let (input,ans) = original_input.take_split(u+1);
@@ -281,9 +231,9 @@ fn lex_string<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
                 strip_reporting(ans.clone()),c
             ));
 
-            Ok((input,ans.map_extra(|_| {
+            Ok((input,LexToken::new(ans.map_extra(|_| {
                 LexTag::String(del)
-            })))
+            }))))
         }
     }
 }
@@ -336,7 +286,7 @@ fn lex_number<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>>{
 			    LexTag::Int(signed_value)
 			});    
 
-    		Ok((remaining_input, lex_token))
+    		Ok((remaining_input, LexToken::new(lex_token)))
     	}
 
     	Some(_) => {
@@ -362,7 +312,7 @@ fn lex_number<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>>{
                 LexTag::Float(fval)
             });    
 
-            Ok((remaining_input, lex_token))
+            Ok((remaining_input, LexToken::new(lex_token)))
     	}
     }
 }
@@ -460,7 +410,7 @@ fn test_lex_int_with_signs() {
     let result = lex_number(input.clone());
     assert_eq!(
         result,
-        Ok((input.take_split(5).0, strip_reporting(input.take_split(5).1).map_extra(|()| LexTag::Int(1234))))
+        Ok((input.take_split(5).0, LexToken::new(strip_reporting(input.take_split(5).1).map_extra(|()| LexTag::Int(1234)))))
     );
 
     // Test negative number
@@ -468,7 +418,7 @@ fn test_lex_int_with_signs() {
     let result = lex_number(input.clone());
     assert_eq!(
         result,
-        Ok((input.take_split(5).0, strip_reporting(input.take_split(5).1).map_extra(|()| LexTag::Int(-5678))))
+        Ok((input.take_split(5).0, LexToken::new(strip_reporting(input.take_split(5).1).map_extra(|()| LexTag::Int(-5678)))))
     );
 
     // Test number without sign (implicit positive)
@@ -476,7 +426,7 @@ fn test_lex_int_with_signs() {
     let result = lex_number(input.clone());
     assert_eq!(
         result,
-        Ok((input.take_split(4).0, strip_reporting(input.take_split(4).1).map_extra(|()| LexTag::Int(9876))))
+        Ok((input.take_split(4).0, LexToken::new(strip_reporting(input.take_split(4).1).map_extra(|()| LexTag::Int(9876)))))
     );
 }
 
@@ -513,21 +463,21 @@ fn test_lex_basic_string_with_names_and_comments() {
     assert!(result.is_ok());
 
     let (remaining, token1) = result.unwrap();
-    assert_eq!(token1.extra, LexTag::Word());
-    assert_eq!(token1.fragment(), &"name1");
+    assert_eq!(token1.inner.extra, LexTag::Word());
+    assert_eq!(token1.inner.fragment(), &"name1");
 
     let result = lext_text(remaining);
     let (remaining, token2) = result.unwrap();
-    assert_eq!(token2.extra, LexTag::Comment());
+    assert_eq!(token2.inner.extra, LexTag::Comment());
     
     let result = lext_text(remaining);
     let (remaining, token3) = result.unwrap();
-    assert_eq!(token3.extra, LexTag::Word());
-    assert_eq!(token3.fragment(), &"name2");
+    assert_eq!(token3.inner.extra, LexTag::Word());
+    assert_eq!(token3.inner.fragment(), &"name2");
 
     let result = lext_text(remaining);
     let (remaining, token4) = result.unwrap();
-    assert_eq!(token4.extra, LexTag::Comment());
+    assert_eq!(token4.inner.extra, LexTag::Comment());
     
     // Make sure no tokens left
     assert_eq!(remaining.fragment(), &"");
@@ -553,18 +503,18 @@ fn test_lex_invalid_token_error() {
     assert!(result.is_ok());
 
     let (remaining, token1) = result.unwrap();
-    assert_eq!(token1.extra, LexTag::Word());
-    assert_eq!(token1.fragment(), &"name1");
+    assert_eq!(token1.inner.extra, LexTag::Word());
+    assert_eq!(token1.inner.fragment(), &"name1");
 
     let result = lext_text(remaining);
     
     // This should fail because `🏳️‍⚧️` is an invalid token (for now)
     let (remaining, token2) = result.unwrap();
-    assert_eq!(token2.extra, LexTag::Unknowen());
+    assert_eq!(token2.inner.extra, LexTag::Unknowen());
 
     let (_, token3)=lext_text(remaining).unwrap(); 
     //depending on if the unknowen handeling is good or not. token3 can be anything
-    match token3.extra {
+    match token3.inner.extra {
         LexTag::Unknowen() | LexTag::Word() => {},
         _ => unreachable!("Unexpected tag"),
     };
@@ -579,7 +529,7 @@ fn assert_operator(input: &str, expected_tag: LexTag) {
 
     assert!(result.is_ok(), "Failed to parse operator: {}", input);
     let (_, token) = result.unwrap();
-    assert_eq!(token.extra, expected_tag, "Expected {:?} but got {:?}", expected_tag, token.extra);
+    assert_eq!(token.inner.extra, expected_tag, "Expected {:?} but got {:?}", expected_tag, token.inner.extra);
 }
 
 #[test]
@@ -625,8 +575,8 @@ fn test_lex_string() {
     let result = lex_string(input.clone());
     assert!(result.is_ok(), "Failed to parse valid string");
     let (remaining, token) = result.unwrap();
-    assert_eq!(token.extra, LexTag::String('"'));
-    assert_eq!(token.fragment(), &"\"Hello, world!\\n\"");
+    assert_eq!(token.inner.extra, LexTag::String('"'));
+    assert_eq!(token.inner.fragment(), &"\"Hello, world!\\n\"");
     assert_eq!(remaining.fragment().len(), 5, "Unexpected characters remaining after parsing a valid string");
 
     // Test an unclosed string which should still return a token and log an error
@@ -634,8 +584,8 @@ fn test_lex_string() {
     let result = lex_string(input.clone());
     assert!(result.is_ok(), "Should return a token despite being unclosed");
     let (_, token) = result.unwrap();
-    assert_eq!(token.extra, LexTag::String('"'));
-    assert_eq!(token.fragment(), &"\"Unclosed string example");
+    assert_eq!(token.inner.extra, LexTag::String('"'));
+    assert_eq!(token.inner.fragment(), &"\"Unclosed string example");
     assert!(!diag.errors.borrow().is_empty(), "Should log an error for unclosed string");
 
     // Test a single character string
@@ -643,8 +593,8 @@ fn test_lex_string() {
     let result = lex_string(input.clone());
     assert!(result.is_ok(), "Failed to parse single character string");
     let (remaining, token) = result.unwrap();
-    assert_eq!(token.extra, LexTag::String('\''));
-    assert_eq!(token.fragment(), &"'a'");
+    assert_eq!(token.inner.extra, LexTag::String('\''));
+    assert_eq!(token.inner.fragment(), &"'a'");
     assert_eq!(remaining.fragment().len(), 0, "Unexpected characters remaining after parsing a single character string");
 
     // Test a string with special escaped characters
@@ -652,8 +602,8 @@ fn test_lex_string() {
     let result = lex_string(input.clone());
     assert!(result.is_ok(), "Failed to parse string with escaped quote");
     let (remaining, token) = result.unwrap();
-    assert_eq!(token.extra, LexTag::String('"'));
-    assert_eq!(token.fragment(), &"\"Escaped \\\" quote\"");
+    assert_eq!(token.inner.extra, LexTag::String('"'));
+    assert_eq!(token.inner.fragment(), &"\"Escaped \\\" quote\"");
     assert_eq!(remaining.fragment().len(), 0, "Unexpected characters remaining after parsing a string with escaped quote");
 
     // Test a string containing newlines and tabs
@@ -661,8 +611,8 @@ fn test_lex_string() {
     let result = lex_string(input.clone());
     assert!(result.is_ok(), "Failed to parse string with newlines and tabs");
     let (remaining, token) = result.unwrap();
-    assert_eq!(token.extra, LexTag::String('"'));
-    assert_eq!(token.fragment(), &"\"Line1\\nLine2\\tTabbed\"");
+    assert_eq!(token.inner.extra, LexTag::String('"'));
+    assert_eq!(token.inner.fragment(), &"\"Line1\\nLine2\\tTabbed\"");
     assert_eq!(remaining.fragment().len(), 0, "Unexpected characters remaining after parsing a string with newlines and tabs");
 }
 
@@ -685,26 +635,26 @@ fn test_overflow_errors() {
 
     assert!(result_large_float.is_ok(), "Failed to parse large float with overflow");
     let (_, token_large_float) = result_large_float.unwrap();
-    assert!(matches!(token_large_float.extra, LexTag::Float(_)), "Expected a float token despite overflow");
+    assert!(matches!(token_large_float.inner.extra, LexTag::Float(_)), "Expected a float token despite overflow");
 
     // Test large int overflow
     let result_large_int = lex_number(input_large_int.clone());
     assert!(result_large_int.is_ok(), "Failed to parse large int with overflow");
     let (_, token_large_int) = result_large_int.unwrap();
-    assert!(matches!(token_large_int.extra, LexTag::Int(_)), "Expected an int token despite overflow");
+    assert!(matches!(token_large_int.inner.extra, LexTag::Int(_)), "Expected an int token despite overflow");
 
     // Test number with underscores
     let result_with_underscores = lex_number(input_with_underscores.clone());
     assert!(result_with_underscores.is_ok(), "Failed to parse number with underscores");
     let (_, token_with_underscores) = result_with_underscores.unwrap();
-    assert_eq!(*token_with_underscores.fragment(), "2_33_1", "Parsed value should ignore underscores");
+    assert_eq!(*token_with_underscores.inner.fragment(), "2_33_1", "Parsed value should ignore underscores");
 
 
     // Test overflow with underscores
     let result_overflow_with_underscores = lex_number(input_overflow_with_underscores.clone());
     assert!(result_overflow_with_underscores.is_ok(), "Failed to parse overflow number with underscores");
     let (_, token_overflow_with_underscores) = result_overflow_with_underscores.unwrap();
-    assert!(matches!(token_overflow_with_underscores.extra, LexTag::Int(_)), "Expected an int token despite overflow");
+    assert!(matches!(token_overflow_with_underscores.inner.extra, LexTag::Int(_)), "Expected an int token despite overflow");
 
     // Check diagnostics for errors
     assert_eq!(diag.errors.borrow().len(), 4, "Expected two overflow errors logged");
@@ -748,7 +698,7 @@ fn test_lex_text_happy_path() {
         let result = lext_text(remaining);
         assert!(result.is_ok(), "Failed to parse expected token: {:?}", expected_tag);
         let (new_remaining, token) = result.unwrap();
-        assert_eq!(token.extra, expected_tag, "Parsed token does not match expected. Expected {:?}, found {:?}", expected_tag, token.extra);
+        assert_eq!(token.inner.extra, expected_tag, "Parsed token does not match expected. Expected {:?}, found {:?}", expected_tag, token.inner.extra);
         remaining = new_remaining;  // Update remaining input for the next token
     }
 
