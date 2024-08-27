@@ -20,7 +20,7 @@ pub type LexToken<'a> = LocatedSpan<&'a str,LexTag>;
 
 #[derive(Debug,PartialEq,Clone)]
 pub enum BinaryOp {
-    Pip,
+    Pipe,
 	Dot,
     Dots,
     DoubleDots,
@@ -165,7 +165,7 @@ fn lex_operator<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>> {
         "|" => LexTag::Op(BinaryOp::SingleOr),
 
         // Multi-char operators
-        "|>" => LexTag::Op(BinaryOp::Pip),
+        "|>" => LexTag::Op(BinaryOp::Pipe),
         "&&" => LexTag::Op(BinaryOp::And),
         "||" => LexTag::Op(BinaryOp::Or),
         "==" => LexTag::Op(BinaryOp::TwoEqul),
@@ -343,26 +343,37 @@ fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
 			(i,*x.fragment())
 		)
 	}
-	let (input,d)=digit1(input)?;
+
+    let (input,d)=digit1(input)?;
 	
 	let diag = input.extra.diag;
 	let report_input=strip_reporting(input.clone());
 
 	let mut overflowed = false;
+    let first_val = {
+        d.parse::<u64>().unwrap_or_else(|_| {
+            overflowed = true; 
+            i64::MAX.try_into().unwrap()
+        })
+    };
 	let ans = fold_many0(
 		alt((
         	preceded(is_a("_"),typed_digit1),
         	typed_digit1,)
         ),
-        ||{d.parse::<u64>().unwrap()},
+        ||{first_val}, //need to handle this overflow 
         |acc, item| {
         	if !overflowed{
         		acc.checked_mul(10u64.pow(item.len() as u32)) // Adjust multiplier based on number of digits
-                .and_then(|acc| acc.checked_add(item.parse::<u64>().unwrap()))
+                .and_then(|acc| acc.checked_add(item.parse::<u64>()
+                    .unwrap_or_else(|_| {
+                        overflowed = true; 
+                        i64::MAX.try_into().unwrap()
+                    })
+                )) //this unrwap can fail in which case we also want to go to that
                 .unwrap_or_else(|| {
                 	overflowed = true;
-                	diag.report_error(UserSideError::OverflowError(report_input,acc));
-                	i64::MAX.try_into().unwrap()//so that we dont have signed overflow causing a double report
+                    i64::MAX.try_into().unwrap()
                 })
         	}
 
@@ -372,6 +383,10 @@ fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
             
         },
     )(input);
+    if overflowed {
+        diag.report_error(UserSideError::OverflowError(report_input));
+        
+    }
     ans
 }
 
@@ -535,7 +550,7 @@ fn test_single_char_operators() {
 
 #[test]
 fn test_multi_char_operators() {
-    assert_operator("|>", LexTag::Op(BinaryOp::Pip));
+    assert_operator("|>", LexTag::Op(BinaryOp::Pipe));
     assert_operator("**", LexTag::Op(BinaryOp::Exp));
     assert_operator("&&", LexTag::Op(BinaryOp::And));
     assert_operator("||", LexTag::Op(BinaryOp::Or));
@@ -596,6 +611,58 @@ fn test_lex_string() {
     assert_eq!(token.fragment(), &"\"Line1\\nLine2\\tTabbed\"");
     assert_eq!(remaining.fragment().len(), 0, "Unexpected characters remaining after parsing a string with newlines and tabs");
 }
+
+#[test]
+fn test_overflow_errors() {
+    let diag = Diagnostics::new();
+
+    // Number that is likely too large, causing overflow
+    let input_large_float = make_cursor("999999999999999999999999999999999999999999999999999999999999999999999999999999999.999999999999999999999999999999999999999999999999999999", &diag);
+    let input_large_int = make_cursor("9223372036854775808", &diag);  // Just beyond the range of i64 for positive numbers
+
+    // Numbers with underscores
+    let input_with_underscores = make_cursor("2_33_1", &diag);
+    let input_overflow_with_underscores = make_cursor("9999999999_9999999999_9999999999", &diag);
+
+    // Test large float overflow
+    let result_large_float = lex_number(input_large_float.clone());
+    assert_eq!(diag.errors.borrow().len(), 2, "Expected two overflow errors logged");
+
+    assert!(result_large_float.is_ok(), "Failed to parse large float with overflow");
+    let (_, token_large_float) = result_large_float.unwrap();
+    assert!(matches!(token_large_float.extra, LexTag::Float(_)), "Expected a float token despite overflow");
+
+    // Test large int overflow
+    let result_large_int = lex_number(input_large_int.clone());
+    assert!(result_large_int.is_ok(), "Failed to parse large int with overflow");
+    let (_, token_large_int) = result_large_int.unwrap();
+    assert!(matches!(token_large_int.extra, LexTag::Int(_)), "Expected an int token despite overflow");
+
+    // Test number with underscores
+    let result_with_underscores = lex_number(input_with_underscores.clone());
+    assert!(result_with_underscores.is_ok(), "Failed to parse number with underscores");
+    let (_, token_with_underscores) = result_with_underscores.unwrap();
+    assert_eq!(*token_with_underscores.fragment(), "2_33_1", "Parsed value should ignore underscores");
+
+
+    // Test overflow with underscores
+    let result_overflow_with_underscores = lex_number(input_overflow_with_underscores.clone());
+    assert!(result_overflow_with_underscores.is_ok(), "Failed to parse overflow number with underscores");
+    let (_, token_overflow_with_underscores) = result_overflow_with_underscores.unwrap();
+    assert!(matches!(token_overflow_with_underscores.extra, LexTag::Int(_)), "Expected an int token despite overflow");
+
+    // Check diagnostics for errors
+    assert_eq!(diag.errors.borrow().len(), 4, "Expected two overflow errors logged");
+
+    for error in diag.errors.borrow().iter() {
+        match error {
+            UserSideError::OverflowError(_) | UserSideError::IntOverflowError(_,_) => println!("Logged overflow as expected"),
+            _ => panic!("Unexpected error type logged"),
+        }
+    }
+}
+
+
 
 #[test]
 fn test_lex_text_happy_path() {
