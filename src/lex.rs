@@ -1,5 +1,5 @@
 use nom::bytes::complete::{is_a,take_till,take_while,take_while1,tag};
-use nom::sequence::{pair,preceded,delimited};
+use nom::sequence::{pair,preceded};
 use nom::combinator::recognize;
 use nom::character::complete::{digit1,one_of,anychar};
 
@@ -105,7 +105,7 @@ pub fn lext_text<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 	))(skip_whitespace(input))
 }
 fn lex_unknowen<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
-    let (input,x)=recognize(anychar)(input)?;
+    let (input,x)=recognize(pair(anychar,take_while(|c:char| !c.is_ascii())))(input)?;
     let ans = strip_reporting(x).map_extra(|()| LexTag::Unknowen());
     Ok((input,ans))
 }
@@ -214,11 +214,11 @@ fn lex_operator<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>> {
 }
 
 fn lex_comment<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
-	delimited(
+	recognize(preceded(
 		is_a("#"),
 		take_till(|c| c=='\n'),
-		take_while(|c| c=='\n')
-	)(input)	
+		// take_while(|c| c=='\n')
+	))(input)	
 	.map(|(i,x)| 
 		(i,strip_reporting(x).map_extra(|()| LexTag::Comment()))
 	)
@@ -367,9 +367,9 @@ fn lex_number<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>>{
     }
 }
 
-//does not handle error checking on the tail
 fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
-	fn typed_digit1<'b>(x: Cursor<'b>) -> CResult<'b, &'b str> {
+	//rust needs some help on figuring out typing so...
+    fn typed_digit1<'b>(x: Cursor<'b>) -> CResult<'b, &'b str> {
 	    digit1(x).map(|(i,x)| 
 			(i,*x.fragment())
 		)
@@ -384,7 +384,7 @@ fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
     let first_val = {
         d.parse::<u64>().unwrap_or_else(|_| {
             overflowed = true; 
-            i64::MAX.try_into().unwrap()
+            i64::MAX.try_into().unwrap() //chosen to avoid double overflow reporting
         })
     };
 	let ans = fold_many0(
@@ -392,7 +392,7 @@ fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
         	preceded(is_a("_"),typed_digit1),
         	typed_digit1,)
         ),
-        ||{first_val}, //need to handle this overflow 
+        ||{first_val}, 
         |acc, item| {
         	if !overflowed{
         		acc.checked_mul(10u64.pow(item.len() as u32)) // Adjust multiplier based on number of digits
@@ -401,7 +401,7 @@ fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
                         overflowed = true; 
                         i64::MAX.try_into().unwrap()
                     })
-                )) //this unrwap can fail in which case we also want to go to that
+                )) 
                 .unwrap_or_else(|| {
                 	overflowed = true;
                     i64::MAX.try_into().unwrap()
