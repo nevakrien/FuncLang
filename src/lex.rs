@@ -19,7 +19,7 @@ use crate::errors::{Diagnostics,make_cursor};
 use crate::token::{LexToken,BinaryOp,LexTag};
 
 #[no_mangle]
-#[allow(dead_code)]
+//#[allow(dead_code)]
 pub fn lex_full_text<'a>(input: &'a str,diag :&'a Diagnostics<'a>) -> Vec<LexToken<'a>> {
     let mut cursor = make_cursor(input,diag);
     let mut ans = Vec::new();
@@ -38,7 +38,7 @@ pub fn lex_full_text<'a>(input: &'a str,diag :&'a Diagnostics<'a>) -> Vec<LexTok
 }
 
 #[no_mangle]
-#[allow(dead_code)]
+//#[allow(dead_code)]
 pub fn lext_text<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 	//TODO add extra token
 	//order is from most common to least
