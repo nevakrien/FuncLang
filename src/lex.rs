@@ -1,11 +1,10 @@
 use nom::bytes::complete::{is_a,take_till,take_while,take_while1,tag};
 use nom::sequence::{pair,preceded,delimited};
 use nom::combinator::recognize;
-use nom::character::complete::{digit1};
+use nom::character::complete::{digit1,one_of,anychar};
 
 use nom::multi::fold_many0;
 use nom::branch::alt;	
-use nom::character::complete::one_of;
 
 // use nom::character::complete::char as nom_char;
 
@@ -63,6 +62,8 @@ pub enum LexTag {
 
 	Op(BinaryOp),
 	String(char),
+    
+    Unknowen(),
 }
 
 #[allow(dead_code)]
@@ -78,7 +79,13 @@ pub fn lext_text<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 		lex_comment,
 		lex_number,
         lex_string,
+        lex_unknowen,
 	))(skip_whitespace(input))
+}
+fn lex_unknowen<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
+    let (input,x)=recognize(anychar)(input)?;
+    let ans = strip_reporting(x).map_extra(|()| LexTag::Unknowen());
+    Ok((input,ans))
 }
 
 fn lex_atom<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
@@ -517,7 +524,8 @@ fn test_lex_invalid_token_error() {
     let result = lext_text(remaining);
     
     // This should fail because `🏳️‍⚧️` is an invalid token (for now)
-    assert!(result.is_err());
+    let (_, token2) = result.unwrap();
+    assert_eq!(token2.extra, LexTag::Unknowen());
 }
 
 #[cfg(test)]
