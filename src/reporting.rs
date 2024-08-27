@@ -1,4 +1,4 @@
-use ariadne::{Report, ReportKind, Label, Color, Source};
+use ariadne::{Report, ReportKind, Label, Color, Source,CharSet};
 use nom_locate::LocatedSpan;
 use std::ops::Range;
 
@@ -31,6 +31,7 @@ fn handle_overflow_error<'a>(span: LocatedSpan<&'a str>, source: &'a str) -> Rep
     let span_len = span.fragment().len();
 
     Report::build(ReportKind::Error, (), byte_offset)
+        .with_config(ariadne::Config::default().with_char_set(CharSet::Unicode))
         .with_message("Overflow error")
         .with_label(
             Label::new(byte_offset..byte_offset + span_len)
@@ -52,6 +53,7 @@ fn handle_int_overflow_error<'a>(span: LocatedSpan<&'a str>, value: u64, source:
     let span_len = span.fragment().len();
 
     Report::build(ReportKind::Error, (), byte_offset)
+        .with_config(ariadne::Config::default().with_char_set(CharSet::Unicode))
         .with_message(format!("Integer overflow error with value {}", value))
         .with_label(
             Label::new(byte_offset..byte_offset + span_len)
@@ -73,6 +75,7 @@ fn handle_unclosed_string<'a>(span: LocatedSpan<&'a str>, ch: char, source: &'a 
     let span_len = span.fragment().len();
 
     Report::build(ReportKind::Error, (), byte_offset)
+        .with_config(ariadne::Config::default().with_char_set(CharSet::Unicode))
         .with_message("Unclosed string error")
         .with_label(
             Label::new(byte_offset..byte_offset + span_len)
@@ -87,7 +90,16 @@ fn handle_unclosed_string<'a>(span: LocatedSpan<&'a str>, ch: char, source: &'a 
         .finish()
 }
 
-#[cfg(test)]
+pub fn print_errors_to_stdout<'a>(errors: &[UserSideError<'a>], source: &'a str) -> Result<(), std::io::Error>{
+    for error in errors {
+        let report = error.to_ariadne_report(source);
+        report.eprint(Source::from(source))?;
+    }
+    Ok(())
+}
+
+
+// #[cfg(test)]
 pub fn gather_errors_to_buffer<'a>(errors: &[UserSideError<'a>], source: &'a str) -> String {
     let mut buffer = Vec::new();
 
@@ -100,7 +112,7 @@ pub fn gather_errors_to_buffer<'a>(errors: &[UserSideError<'a>], source: &'a str
 }
 #[test]
 fn test_print() {
-    let source_code = "let x = 9223372036854775808;  aaa  :ww \n922337203685477580822\"unterminated string;\n ";
+    let source_code = ", 丐, 丑 \n\nmore::stuff\n\n\" unclosed string";//"let x = 9223372036854775808;  aaa  :ww \n922337203685477580822\"unterminated string;\n ";
     let diag = Diagnostics::new();
     for token in lex_full_text(source_code, &diag) {
         println!("{:?}", token);
