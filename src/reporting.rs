@@ -1,129 +1,112 @@
-use ariadne::{Report, ReportKind, Label, Color, Source,CharSet};
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+use codespan_reporting::files::SimpleFile;
+use codespan_reporting::term::{
+    self,
+    termcolor::{ColorChoice, StandardStream, Buffer, WriteColor},
+};
 use nom_locate::LocatedSpan;
-use std::ops::Range;
+use std::error::Error;
 
 use crate::errors::{UserSideError, Diagnostics};
 use crate::lex::lex_full_text;
 
 impl<'a> UserSideError<'a> {
-    pub fn to_ariadne_report(&self, source: &'a str) -> Report<'a, Range<usize>> {
+    pub fn to_codespan_diagnostic(&self) -> Diagnostic<()> {
         match self {
-            UserSideError::OverflowError(span) => handle_overflow_error(*span, source),
-            UserSideError::IntOverflowError(span, value) => handle_int_overflow_error(*span, *value, source),
-            UserSideError::UnclosedString(span, ch) => handle_unclosed_string(*span, *ch, source),
+            UserSideError::OverflowError(span) => handle_overflow_error(span),
+            UserSideError::IntOverflowError(span, value) => {
+                handle_int_overflow_error(span, *value)
+            }
+            UserSideError::UnclosedString(span, ch) => handle_unclosed_string(span, *ch),
         }
     }
 }
 
-// Utility function to get the line info including byte range
-fn get_line_info(source: &str, offset: usize) -> (&str, Range<usize>, usize) {
-    let start = source[..offset].rfind('\n').map_or(0, |pos| pos + 1);
-    let end = source[offset..].find('\n').map_or(source.len(), |pos| offset + pos);
-    let char_offset = offset - start;
+// Function to create a diagnostic for OverflowError
+fn handle_overflow_error(span: &LocatedSpan<&str>) -> Diagnostic<()> {
+    let start = span.location_offset();
+    let end = start + span.fragment().len();
 
-    (&source[start..end], start..end, char_offset)
-}
-
-// Function to create a report for OverflowError
-fn handle_overflow_error<'a>(span: LocatedSpan<&'a str>, source: &'a str) -> Report<'a, Range<usize>> {
-    let (line, line_range, _) = get_line_info(source, span.location_offset());
-    let byte_offset = span.location_offset();
-    let span_len = span.fragment().len();
-
-    Report::build(ReportKind::Error, (), byte_offset)
-        .with_config(ariadne::Config::default().with_char_set(CharSet::Unicode))
+    Diagnostic::error()
         .with_message("Overflow error")
-        .with_label(
-            Label::new(byte_offset..byte_offset + span_len)
-                .with_message("Too large to parse properly")
-                .with_color(Color::Red),
-        )
-        .with_label(
-            Label::new(line_range)
-                .with_message(line)
-                .with_color(Color::White),
-        )
-        .finish()
+        .with_labels(vec![Label::primary((), start..end)
+            .with_message("Too large to parse properly")])
 }
 
-// Function to create a report for IntOverflowError
-fn handle_int_overflow_error<'a>(span: LocatedSpan<&'a str>, value: u64, source: &'a str) -> Report<'a, Range<usize>> {
-    let (line, line_range, _) = get_line_info(source, span.location_offset());
-    let byte_offset = span.location_offset();
-    let span_len = span.fragment().len();
+// Function to create a diagnostic for IntOverflowError
+fn handle_int_overflow_error(span: &LocatedSpan<&str>, value: u64) -> Diagnostic<()> {
+    let start = span.location_offset();
+    let end = start + span.fragment().len();
 
-    Report::build(ReportKind::Error, (), byte_offset)
-        .with_config(ariadne::Config::default().with_char_set(CharSet::Unicode))
-        .with_message(format!("Integer overflow error with value {}", value))
-        .with_label(
-            Label::new(byte_offset..byte_offset + span_len)
-                .with_message("This number does not fit into int. Try a float")
-                .with_color(Color::Red),
-        )
-        .with_label(
-            Label::new(line_range)
-                .with_message(line)
-                .with_color(Color::White),
-        )
-        .finish()
+    Diagnostic::error()
+        .with_message(format!("Integer overflow with value {}", value))
+        .with_labels(vec![Label::primary((), start..end)
+            .with_message("This number does not fit into an integer. Try using a float.")])
 }
 
-// Function to create a report for UnclosedString
-fn handle_unclosed_string<'a>(span: LocatedSpan<&'a str>, ch: char, source: &'a str) -> Report<'a, Range<usize>> {
-    let (line, line_range, _) = get_line_info(source, span.location_offset());
-    let byte_offset = span.location_offset();
-    let span_len = span.fragment().len();
+// Function to create a diagnostic for UnclosedString
+fn handle_unclosed_string(span: &LocatedSpan<&str>, ch: char) -> Diagnostic<()> {
+    let start = span.location_offset();
+    let end = start + span.fragment().len();
 
-    Report::build(ReportKind::Error, (), byte_offset)
-        .with_config(ariadne::Config::default().with_char_set(CharSet::Unicode))
-        .with_message("Unclosed string error")
-        .with_label(
-            Label::new(byte_offset..byte_offset + span_len)
-                .with_message(format!("Expected closing '\\{}'", ch))
-                .with_color(Color::Red),
-        )
-        .with_label(
-            Label::new(line_range)
-                .with_message(line)
-                .with_color(Color::White),
-        )
-        .finish()
+    Diagnostic::error()
+        .with_message("Unclosed string")
+        .with_labels(vec![Label::primary((), start..end)
+            .with_message(format!("Expected closing '{}'", ch))])
+        .with_notes(vec![
+            "Strings must be closed with matching quotation marks.".to_string(),
+        ])
 }
 
-pub fn print_errors_to_stdout<'a>(errors: &[UserSideError<'a>], source: &'a str) -> Result<(), std::io::Error>{
+// Function to print errors to standard output
+pub fn print_errors_to_stdout<'a>(
+    errors: &[UserSideError<'a>],
+    source: &'a str,
+) -> Result<(), Box<dyn Error>> {
+    let file = SimpleFile::new("source", source);
+    let writer = StandardStream::stderr(ColorChoice::Auto);
+    let config = term::Config::default();
+
     for error in errors {
-        let report = error.to_ariadne_report(source);
-        report.eprint(Source::from(source))?;
+        let diagnostic = error.to_codespan_diagnostic();
+        term::emit(&mut writer.lock(), &config, &file, &diagnostic)?;
     }
+
     Ok(())
 }
 
-
-// #[cfg(test)]
+// Function to gather errors into a string buffer
 pub fn gather_errors_to_buffer<'a>(errors: &[UserSideError<'a>], source: &'a str) -> String {
-    let mut buffer = Vec::new();
+    let file = SimpleFile::new("source", source);
+    let mut buffer = Buffer::ansi();
+    let config = term::Config::default();
 
     for error in errors {
-        let report = error.to_ariadne_report(source);
-        report.write(Source::from(source), &mut buffer).unwrap();
+        let diagnostic = error.to_codespan_diagnostic();
+        term::emit(&mut buffer, &config, &file, &diagnostic).unwrap();
     }
 
-    String::from_utf8(buffer).unwrap()
+    String::from_utf8(buffer.into_inner()).unwrap()
 }
+
 #[test]
 fn test_print() {
-    let source_code = ", 丐, 丑 \n\nmore::stuff\n\n\" unclosed string";//"let x = 9223372036854775808;  aaa  :ww \n922337203685477580822\"unterminated string;\n ";
+    let source_code = "let x = 9223372036854775808;  🏳️‍⚧️ aaa  :ww \n922337203685477580822\"unterminated string;\n ";
     let diag = Diagnostics::new();
+    
+    // Simulate lexing process and error collection
     for token in lex_full_text(source_code, &diag) {
         println!("{:?}", token);
     }
-
-    for error in diag.errors.borrow().iter(){
+    
+    for error in diag.errors.borrow().iter() {
         println!("{:?}", error);
     }
-
+    
+    // Print errors to stdout
+    // print_errors_to_stdout(&diag.errors.borrow(), source_code).unwrap();
+    
+    // Gather errors into buffer and print
     let buffer = gather_errors_to_buffer(&diag.errors.borrow(), source_code);
-
-    // Print all errors at once
-    println!("got {} errors:\n{}", diag.errors.borrow().len(), buffer);
+    println!("Collected Errors:\n{}", buffer);
 }

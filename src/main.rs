@@ -15,7 +15,7 @@ use std::fs::File;
 use std::io::{self, Read,stdout,Write};
 use std::path::Path;
 
-fn main() -> io::Result<()> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Specify the path to the file you want to lex
     let path = Path::new("sample.txt");
     
