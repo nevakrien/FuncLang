@@ -507,6 +507,14 @@ fn test_lex_basic_string_with_names_and_comments() {
     // Make sure no tokens left
     assert_eq!(remaining.fragment(), &"");
 }
+#[test]
+fn test_lex_empty() {
+    let diag = Diagnostics::new();
+
+    let input = make_cursor("", &diag);
+    let result = lext_text(input);
+    assert!(result.is_err());
+}
 
 #[test]
 fn test_lex_invalid_token_error() {
