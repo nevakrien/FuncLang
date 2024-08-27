@@ -228,7 +228,7 @@ fn lex_string<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
         Err((u,c)) => {
             let (input,ans) = original_input.take_split(u+1);
             input.extra.diag.report_error(UserSideError::UnclosedString(
-                strip_reporting(ans.clone()),c
+                strip_reporting(ans.clone()),del
             ));
 
             Ok((input,LexToken::new(ans.map_extra(|_| {
@@ -324,11 +324,11 @@ fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
 			(i,*x.fragment())
 		)
 	}
-
+    let report_input=strip_reporting(input.clone());
+    
     let (input,d)=digit1(input)?;
-	
 	let diag = input.extra.diag;
-	let report_input=strip_reporting(input.clone());
+	
 
 	let mut overflowed = false;
     let first_val = {
@@ -337,7 +337,7 @@ fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
             i64::MAX.try_into().unwrap() //chosen to avoid double overflow reporting
         })
     };
-	let ans = fold_many0(
+	let (input,ans) = fold_many0(
 		alt((
         	preceded(is_a("_"),typed_digit1),
         	typed_digit1,)
@@ -363,12 +363,18 @@ fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
         	}
             
         },
-    )(input);
+    )(input).unwrap();
     if overflowed {
-        diag.report_error(UserSideError::OverflowError(report_input));
+        // Calculate the start and end of the substring in `report_input`
+        let start = report_input.location_offset();
+        let end = input.location_offset();
         
+        // Slice out the relevant part of the original input
+        let relevant_input = report_input.take(end - start);
+        
+        diag.report_error(UserSideError::OverflowError(relevant_input));
     }
-    ans
+    Ok((input,ans))
 }
 
 

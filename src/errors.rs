@@ -1,10 +1,9 @@
-#![allow(dead_code)] //this module is being consumed
+// #![allow(dead_code)] //this module is being consumed
 use core::cell::RefCell;
 use  nom_locate::LocatedSpan;
 
 #[derive(Debug,PartialEq)]
 pub enum UserSideError<'a> {
-	BadNumPostfix(LocatedSpan<&'a str>),
 	OverflowError(LocatedSpan<&'a str>),
 	IntOverflowError(LocatedSpan<&'a str>,u64),
 
@@ -14,7 +13,7 @@ pub enum UserSideError<'a> {
 
 #[derive(Debug,PartialEq)]
 pub enum UserSideWarning<'a> {
-	UnusedVar(LocatedSpan<&'a str>),
+	UnusedVar(LocatedSpan<&'a str>), //for now not actually implemented
 }
 
 #[derive(Debug,PartialEq)]
@@ -60,6 +59,9 @@ impl<'a, T: Clone> Extra<'a, T> {
 
 pub type Cursor<'a,T=()> = LocatedSpan<&'a str, Extra<'a,T>>;
 pub type CResult<'a , O,T=()> = nom::IResult<Cursor<'a,T>, O>;
+
+
+pub type TResult<'a,'b,O> = nom::IResult<crate::token::Cursor<'a,'b>, O, ()>;
 
 pub fn make_cursor<'a>(code:&'a str,diag: &'a Diagnostics<'a>,) -> Cursor<'a> {
 	Cursor::new_extra(code, Extra{diag,tag:()})

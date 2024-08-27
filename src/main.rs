@@ -1,8 +1,11 @@
 mod lex;
 mod errors;
 mod token;
+
 mod parse;
 mod ast;
+
+mod reporting;
 
 use crate::lex::lex_full_text;
 use crate::errors::{Diagnostics};  
