@@ -1,0 +1,5 @@
+name1 # This is a comment 
+name2 # Another comment
+
+func + 123 / 2.11_2; 1."string" # aa " {}comment 
+ %atom :: :atom

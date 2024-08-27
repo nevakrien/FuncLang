@@ -37,6 +37,7 @@ pub enum BinaryOp {
 
 	Or,
 	And,
+    Xor,
 	OneEqul,
 	TwoEqul,
 	NotEqual,
@@ -66,6 +67,7 @@ pub enum LexTag {
     Unknowen(),
 }
 
+#[no_mangle]
 #[allow(dead_code)]
 pub fn lext_text<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 	//TODO add extra token
@@ -130,13 +132,14 @@ fn lex_ender<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 fn lex_operator<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>> {
     let (input, token) = alt((
         // 1. Single-char operators with no associated double-char version
-        recognize(one_of("+/.%^")),
+        recognize(one_of("+/.%")),
 
         // 2. Multi-character operators
         recognize(tag("|>")),
         recognize(tag("**")),
         recognize(tag("&&")),
         recognize(tag("||")),
+        recognize(tag("^^")),
         recognize(tag("==")),
         recognize(tag("!=")),
         recognize(tag("<=")),
@@ -146,7 +149,7 @@ fn lex_operator<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>> {
         recognize(tag("::")),
 
         // 3. Remaining single-char operators
-        recognize(one_of("-=*<>|:")),
+        recognize(one_of("-=*<>|:^")),
     ))(input)?;
 
     let op_tag = match *token.fragment() {
@@ -175,6 +178,7 @@ fn lex_operator<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>> {
         "|>" => LexTag::Op(BinaryOp::Pipe),
         "&&" => LexTag::Op(BinaryOp::And),
         "||" => LexTag::Op(BinaryOp::Or),
+        "^^" => LexTag::Op(BinaryOp::Xor),
         "==" => LexTag::Op(BinaryOp::TwoEqul),
         "!=" => LexTag::Op(BinaryOp::NotEqual),
         "<=" => LexTag::Op(BinaryOp::SmallerEqual),
@@ -403,6 +407,7 @@ use crate::errors::Diagnostics;
 use crate::errors::make_cursor;
 
 #[test]
+#[no_mangle]
 fn test_uint_underscored_valid() {
     let diag = Diagnostics::new();
 
@@ -429,6 +434,7 @@ fn test_uint_underscored_valid() {
 }
 
 #[test]
+#[no_mangle]
 fn test_lex_int_with_signs() {
     let diag = Diagnostics::new();
 
@@ -458,6 +464,7 @@ fn test_lex_int_with_signs() {
 }
 
 #[test]
+#[no_mangle]
 fn test_skip_whitespace() {
     let diag = Diagnostics::new();
 
@@ -479,6 +486,7 @@ fn test_skip_whitespace() {
 }
 
 #[test]
+#[no_mangle]
 fn test_lex_basic_string_with_names_and_comments() {
     let diag = Diagnostics::new();
 
@@ -508,6 +516,7 @@ fn test_lex_basic_string_with_names_and_comments() {
     assert_eq!(remaining.fragment(), &"");
 }
 #[test]
+#[no_mangle]
 fn test_lex_empty() {
     let diag = Diagnostics::new();
 
@@ -517,6 +526,7 @@ fn test_lex_empty() {
 }
 
 #[test]
+#[no_mangle]
 fn test_lex_invalid_token_error() {
     let diag = Diagnostics::new();
 
@@ -544,6 +554,7 @@ fn test_lex_invalid_token_error() {
 }
 
 #[cfg(test)]
+#[no_mangle]
 fn assert_operator(input: &str, expected_tag: LexTag) {
     let diag = Diagnostics::new();
     let cursor = make_cursor(input, &diag);
@@ -555,6 +566,7 @@ fn assert_operator(input: &str, expected_tag: LexTag) {
 }
 
 #[test]
+#[no_mangle]
 fn test_single_char_operators() {
     assert_operator("+", LexTag::Op(BinaryOp::Add));
     assert_operator("-", LexTag::Op(BinaryOp::Sub));
@@ -572,6 +584,7 @@ fn test_single_char_operators() {
 }
 
 #[test]
+#[no_mangle]
 fn test_multi_char_operators() {
     assert_operator("|>", LexTag::Op(BinaryOp::Pipe));
     assert_operator("**", LexTag::Op(BinaryOp::Exp));
@@ -586,6 +599,7 @@ fn test_multi_char_operators() {
 }
 
 #[test]
+#[no_mangle]
 fn test_lex_string() {
     let diag = Diagnostics::new();
 
@@ -636,6 +650,7 @@ fn test_lex_string() {
 }
 
 #[test]
+#[no_mangle]
 fn test_overflow_errors() {
     let diag = Diagnostics::new();
 
@@ -688,6 +703,7 @@ fn test_overflow_errors() {
 
 
 #[test]
+#[no_mangle]
 fn test_lex_text_happy_path() {
     let diag = Diagnostics::new();
 
