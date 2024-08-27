@@ -15,6 +15,8 @@ use  nom_locate::LocatedSpan;
 use nom::InputTake;
 use nom::Offset;
 
+use crate::errors::{Diagnostics,make_cursor};
+
 pub type LexToken<'a> = LocatedSpan<&'a str,LexTag>;
 
 #[derive(Debug,PartialEq,Clone)]
@@ -65,6 +67,24 @@ pub enum LexTag {
 	String(char),
     
     Unknowen(),
+}
+
+#[allow(dead_code)]
+pub fn lex_full_text<'a>(input: &'a str,diag :&'a Diagnostics<'a>) -> Vec<LocatedSpan<&'a str, LexTag>> {
+    let mut cursor = make_cursor(input,diag);
+    let mut ans = Vec::new();
+    loop {
+        match lext_text(cursor) {
+            Ok((new_cursor, token)) => {
+                ans.push(token);
+                cursor=new_cursor;
+            }
+            Err(_) => {
+                break;
+            }            
+        }
+    }
+    ans
 }
 
 #[no_mangle]
@@ -401,10 +421,7 @@ fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
     ans
 }
 
-#[cfg(test)]
-use crate::errors::Diagnostics;
-#[cfg(test)]
-use crate::errors::make_cursor;
+
 
 #[test]
 #[no_mangle]

@@ -1,12 +1,11 @@
 mod lex;
 mod errors;
-use crate::lex::{lext_text,LexToken};
-use crate::errors::{Cursor,make_cursor,Diagnostics};  
+use crate::lex::lex_full_text;
+use crate::errors::{Diagnostics};  
 
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
-
 
 fn main() -> io::Result<()> {
     // Specify the path to the file you want to lex
@@ -21,23 +20,10 @@ fn main() -> io::Result<()> {
 
     // Create a Cursor from the content
     let diag = Diagnostics::new();
-    let cursor = make_cursor(&content,&diag);
-
-    // Lex the content
-    let mut remaining = cursor;
-    while !remaining.fragment().is_empty() {
-        match lext_text(remaining) {
-            Ok((new_remaining, token)) => {
-                println!("{:?}", token);  // Print the lexed token
-                remaining = new_remaining;  // Update the remaining input
-            }
-            Err(err) => {
-                eprintln!("Error lexing: {:?}", err);
-                break;
-            }
-        }
+    for token in lex_full_text(&content,&diag) {
+        println!("{:?}", token);
     }
 
     Ok(())
 }
-
+    
