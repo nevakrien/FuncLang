@@ -225,7 +225,7 @@ fn lex_string<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
                 LexTag::String(del)
             }))))    
         }
-        Err((u,c)) => {
+        Err((u,_)) => {
             let (input,ans) = original_input.take_split(u+1);
             input.extra.diag.report_error(UserSideError::UnclosedString(
                 strip_reporting(ans.clone()),del
@@ -592,7 +592,7 @@ fn test_lex_string() {
     let (_, token) = result.unwrap();
     assert_eq!(token.inner.extra, LexTag::String('"'));
     assert_eq!(token.inner.fragment(), &"\"Unclosed string example");
-    assert!(!diag.errors.borrow().is_empty(), "Should log an error for unclosed string");
+    assert!(!diag.borrow_errors().is_empty(), "Should log an error for unclosed string");
 
     // Test a single character string
     let input = make_cursor("'a'", &diag);
@@ -637,7 +637,7 @@ fn test_overflow_errors() {
 
     // Test large float overflow
     let result_large_float = lex_number(input_large_float.clone());
-    assert_eq!(diag.errors.borrow().len(), 2, "Expected two overflow errors logged");
+    assert_eq!(diag.borrow_errors().len(), 2, "Expected two overflow errors logged");
 
     assert!(result_large_float.is_ok(), "Failed to parse large float with overflow");
     let (_, token_large_float) = result_large_float.unwrap();
@@ -663,9 +663,9 @@ fn test_overflow_errors() {
     assert!(matches!(token_overflow_with_underscores.inner.extra, LexTag::Int(_)), "Expected an int token despite overflow");
 
     // Check diagnostics for errors
-    assert_eq!(diag.errors.borrow().len(), 4, "Expected two overflow errors logged");
+    assert_eq!(diag.borrow_errors().len(), 4, "Expected two overflow errors logged");
 
-    for error in diag.errors.borrow().iter() {
+    for error in diag.borrow_errors().iter() {
         match error {
             UserSideError::OverflowError(_) | UserSideError::IntOverflowError(_,_) => println!("Logged overflow as expected"),
             _ => panic!("Unexpected error type logged"),
@@ -710,6 +710,6 @@ fn test_lex_text_happy_path() {
 
     // Check that there are no more tokens left after parsing
     assert_eq!(remaining.fragment().len(), 0, "Unexpected characters remaining after parsing all tokens");
-    assert_eq!(diag.errors.borrow().len(), 0, "Unexpected errors");
-    assert_eq!(diag.warnings.borrow().len(), 0, "Unexpected warnings");
+    assert_eq!(diag.borrow_errors().len(), 0, "Unexpected errors");
+    assert_eq!(diag.borrow_warnings().len(), 0, "Unexpected warnings");
 }

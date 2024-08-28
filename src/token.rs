@@ -1,3 +1,4 @@
+#![allow(dead_code)] //this module is being consumed
 use nom::{InputIter, InputLength, InputTake, Needed, Slice};
 use nom_locate::LocatedSpan;
 use std::iter::Enumerate;

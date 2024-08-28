@@ -2,7 +2,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFile;
 use codespan_reporting::term::{
     self,
-    termcolor::{ColorChoice, StandardStream, Buffer, WriteColor},
+    termcolor::{ColorChoice, StandardStream, Buffer},
 };
 use nom_locate::LocatedSpan;
 use std::error::Error;
@@ -99,14 +99,14 @@ fn test_print() {
         println!("{:?}", token);
     }
     
-    for error in diag.errors.borrow().iter() {
+    for error in diag.borrow_errors().iter() {
         println!("{:?}", error);
     }
     
     // Print errors to stdout
-    // print_errors_to_stdout(&diag.errors.borrow(), source_code).unwrap();
+    // print_errors_to_stdout(&diag.borrow_errors(), source_code).unwrap();
     
     // Gather errors into buffer and print
-    let buffer = gather_errors_to_buffer(&diag.errors.borrow(), source_code);
+    let buffer = gather_errors_to_buffer(&diag.borrow_errors(), source_code);
     println!("Collected Errors:\n{}", buffer);
 }

@@ -2,8 +2,8 @@ mod lex;
 mod errors;
 mod token;
 
-mod parse;
-mod ast;
+// mod parse;
+// mod ast;
 
 mod reporting;
 
@@ -12,7 +12,7 @@ use crate::errors::{Diagnostics};
 use crate::reporting::print_errors_to_stdout;
 
 use std::fs::File;
-use std::io::{self, Read,stdout,Write};
+use std::io::{Read,stdout,Write};
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -34,11 +34,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{:?}", token);
     }
 
-    for error in diag.errors.borrow().iter(){
+    for error in diag.borrow_errors().iter(){
         println!("{:?}", error);
     }
 
-    print_errors_to_stdout(&diag.errors.borrow(),code)?;
+    print_errors_to_stdout(&diag.borrow_errors(),code)?;
     stdout().flush()?;
 
     Ok(())
