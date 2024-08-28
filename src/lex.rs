@@ -185,7 +185,7 @@ fn lex_word<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
 	)		
 }
 
-fn skip_to_str_end(input: &str, del: char) -> Result<usize, (usize,char)> {
+fn skip_to_str_end(input: &str, del: char) -> Result<usize, usize> {
     assert!(del.is_ascii());
 
     let mut chars = input.chars().peekable();
@@ -202,16 +202,18 @@ fn skip_to_str_end(input: &str, del: char) -> Result<usize, (usize,char)> {
                 continue;
             } else {
                 // If backslash is the last character, return an error with it
-                return Err((count,'\\'));
+                return Err(count);
             }
         } else if c == del {
             // If the delimiter is found and it's not escaped, return the count
             return Ok(count);
+        } else if c== '\n'{
+            return Err(count);
         }
     }
 
     // If end of string is reached without finding an unescaped delimiter, return an error with the last character
-    Err((count,input.chars().last().unwrap_or('\0')))
+    Err(count)
 }
 
 fn lex_string<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
@@ -225,7 +227,7 @@ fn lex_string<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
                 LexTag::String(del)
             }))))    
         }
-        Err((u,_)) => {
+        Err(u) => {
             let (input,ans) = original_input.take_split(u+1);
             input.extra.diag.report_error(UserSideError::UnclosedString(
                 strip_reporting(ans.clone()),del
