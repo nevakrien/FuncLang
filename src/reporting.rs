@@ -1,4 +1,5 @@
-use codespan_reporting::diagnostic::{Diagnostic, Label};
+use codespan_reporting::diagnostic::{Label};
+use codespan_reporting::diagnostic::Diagnostic as PrintDiagnostic;
 use codespan_reporting::files::SimpleFile;
 use codespan_reporting::term::{
     self,
@@ -11,45 +12,55 @@ use crate::errors::{UserSideError, Diagnostics};
 use crate::lex::lex_full_text;
 
 impl<'a> UserSideError<'a> {
-    pub fn to_codespan_diagnostic(&self) -> Diagnostic<()> {
+    pub fn to_codespan_diagnostic(&self) -> PrintDiagnostic<()> {
         match self {
             UserSideError::OverflowError(span) => handle_overflow_error(span),
             UserSideError::IntOverflowError(span, value) => {
                 handle_int_overflow_error(span, *value)
             }
             UserSideError::UnclosedString(span, ch) => handle_unclosed_string(span, *ch),
+            UserSideError::UnokwenToken(span) => handle_unkowen_token_error(span),
         }
     }
 }
 
-// Function to create a diagnostic for OverflowError
-fn handle_overflow_error(span: &LocatedSpan<&str>) -> Diagnostic<()> {
+fn handle_unkowen_token_error(span: &LocatedSpan<&str>) -> PrintDiagnostic<()> {
     let start = span.location_offset();
     let end = start + span.fragment().len();
 
-    Diagnostic::error()
+    PrintDiagnostic::error()
+        .with_message("Unokwen Token")
+        .with_labels(vec![Label::primary((), start..end)])
+}
+
+// Function to create a diagnostic for OverflowError
+fn handle_overflow_error(span: &LocatedSpan<&str>) -> PrintDiagnostic<()> {
+    let start = span.location_offset();
+    let end = start + span.fragment().len();
+
+    PrintDiagnostic::error()
         .with_message("Overflow error")
         .with_labels(vec![Label::primary((), start..end)
             .with_message("Too large to parse properly")])
 }
 
 // Function to create a diagnostic for IntOverflowError
-fn handle_int_overflow_error(span: &LocatedSpan<&str>, value: u64) -> Diagnostic<()> {
+fn handle_int_overflow_error(span: &LocatedSpan<&str>, value: u64) -> PrintDiagnostic<()> {
     let start = span.location_offset();
     let end = start + span.fragment().len();
 
-    Diagnostic::error()
+    PrintDiagnostic::error()
         .with_message(format!("Integer overflow with value {}", value))
         .with_labels(vec![Label::primary((), start..end)
             .with_message("This number does not fit into an integer. Try using a float.")])
 }
 
 // Function to create a diagnostic for UnclosedString
-fn handle_unclosed_string(span: &LocatedSpan<&str>, ch: char) -> Diagnostic<()> {
+fn handle_unclosed_string(span: &LocatedSpan<&str>, ch: char) -> PrintDiagnostic<()> {
     let start = span.location_offset();
     let end = start + span.fragment().len();
 
-    Diagnostic::error()
+    PrintDiagnostic::error()
         .with_message("Unclosed string")
         .with_labels(vec![Label::primary((), start..end)
             .with_message(format!("Expected closing '{}'", ch))])

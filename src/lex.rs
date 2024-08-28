@@ -56,6 +56,7 @@ pub fn lext_text<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
 }
 fn lex_unknowen<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
     let (input,x)=recognize(pair(anychar,take_while(|c:char| !c.is_ascii())))(input)?;
+    input.extra.diag.report_error(UserSideError::UnokwenToken(strip_reporting(x.clone())));
     let ans = strip_reporting(x).map_extra(|()| LexTag::Unknowen());
     Ok((input,LexToken::new(ans)))
 }

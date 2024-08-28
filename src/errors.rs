@@ -14,7 +14,7 @@ use  nom_locate::LocatedSpan;
 pub enum UserSideError<'a> {
 	OverflowError(LocatedSpan<&'a str>),
 	IntOverflowError(LocatedSpan<&'a str>,u64),
-
+	UnokwenToken(LocatedSpan<&'a str>),
 	UnclosedString(LocatedSpan<&'a str>,char),
 
 }

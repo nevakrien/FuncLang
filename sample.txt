@@ -5,9 +5,12 @@ func + 123 / 2.11_2; 1."string" # aa " {}comment
  (%atom :: :atom)  
 
 🏳️‍⚧️
+# commenting this 🏳️‍⚧️ should be fine
 
 more::stuff
 
 " unclosed string
 
 " unclosed string2
+
+22222222222222222222222222222222222222222222222222222222222222222222222222222222222222
