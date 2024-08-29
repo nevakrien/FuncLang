@@ -1,3 +1,5 @@
+#![allow(dead_code,unused_imports)]
+
 use crate::token::{TokenSlice,LexToken,LexTag,BinaryOp};
 pub struct ParData<'a,'b> {
 	pub inner:Vec<ParExp<'a,'b>>,

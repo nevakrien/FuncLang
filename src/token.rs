@@ -95,7 +95,20 @@ impl<'a, 'b, D> TokenSlice<'a, 'b, D> {
     pub fn last(&self) -> Option<&LexToken<'a>> {
         self.tokens.last()
     }
+
 }
+
+impl<'a, 'b, D: Clone> TokenSlice<'a, 'b, D> {
+    pub fn take_err(&self, count: usize) -> Result<(Self, Self), ()> {
+        if self.input_len() >= count {
+            let (taken, remaining) = self.take_split(count);
+            Ok((taken, remaining))
+        } else {
+            Err(())
+        }
+    }
+}
+
 
 // Implement methods to convert between types with and without diagnostics
 impl<'a, 'b> TokenSlice<'a, 'b, &Diagnostics<'a>> {
