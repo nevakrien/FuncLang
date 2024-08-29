@@ -6,6 +6,7 @@ use std::ops::{Range, RangeFrom, RangeFull, RangeTo};
 use std::slice::Iter;
 use core::ops::Index;
 use nom::Offset;
+use nom::UnspecializedInput;
 
 use crate::errors::{Diagnostics,UserSideError,UserSideWarning};
 
@@ -20,6 +21,10 @@ impl<'a> LexToken<'a> {
     }
     pub fn tag(&self) -> LexTag {
     	self.inner.extra.clone()
+    }
+
+    pub fn span(&self) -> LocatedSpan<&'a str> {
+        self.inner.clone().map_extra(|_| ())
     }
 }
 
@@ -78,7 +83,7 @@ pub enum BinaryOp {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TokenSlice<'a, 'b, D = () > {
     tokens: &'b [LexToken<'a>],
-    diag: D,
+    pub diag: D,
 }
 pub type Cursor<'a,'b> = TokenSlice<'a, 'b, &'a Diagnostics<'a>>;
 pub type StaticCursor<'a> = Cursor<'a,'a>;
@@ -87,10 +92,13 @@ impl<'a, 'b, D> TokenSlice<'a, 'b, D> {
     pub fn new(tokens: &'b [LexToken<'a>], diag: D) -> Self {
         TokenSlice { tokens, diag }
     }
+    pub fn last(&self) -> Option<&LexToken<'a>> {
+        self.tokens.last()
+    }
 }
 
 // Implement methods to convert between types with and without diagnostics
-impl<'a, 'b> TokenSlice<'a, 'b, Diagnostics<'a>> {
+impl<'a, 'b> TokenSlice<'a, 'b, &Diagnostics<'a>> {
     pub fn strip_diag(self) -> TokenSlice<'a, 'b> {
         TokenSlice {
             tokens: self.tokens,
@@ -106,8 +114,9 @@ impl<'a, 'b> TokenSlice<'a, 'b, Diagnostics<'a>> {
     }
 }
 
-impl<'a, 'b> TokenSlice<'a, 'b> {
-    pub fn add_diag(self, diag: Diagnostics<'a>) -> TokenSlice<'a, 'b, Diagnostics<'a>> {
+
+impl<'a, 'b> TokenSlice<'a, 'b,()> {
+    pub fn add_diag(self, diag: &'a Diagnostics<'a>) -> TokenSlice<'a, 'b, &'a Diagnostics<'a>> {
         TokenSlice {
             tokens: self.tokens,
             diag,
@@ -122,6 +131,7 @@ impl<'a, 'b, D> Index<usize> for TokenSlice<'a, 'b, D>
     fn index(&self, index: usize) -> &LexToken<'a> {
         &self.tokens[index]
     }
+
 }
 
 // Implement InputLength for TokenSlice
@@ -246,3 +256,19 @@ where
 }
 
 
+impl<'a, 'b, D> Iterator for TokenSlice<'a, 'b, D> {
+    type Item = &'b LexToken<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.tokens.is_empty() {
+            None
+        } else {
+            let (first, rest) = self.tokens.split_first()?;
+            self.tokens = rest;
+            Some(first)
+        }
+    }
+}
+
+
+impl<'a, 'b, D> UnspecializedInput for TokenSlice<'a, 'b, D> {}

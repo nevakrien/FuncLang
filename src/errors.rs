@@ -17,6 +17,10 @@ pub enum UserSideError<'a> {
 	UnokwenToken(LocatedSpan<&'a str>),
 	UnclosedString(LocatedSpan<&'a str>,char),
 
+	UnclosedPar(LocatedSpan<&'a str>,LocatedSpan<&'a str>),//start found
+	ExtraPar(LocatedSpan<&'a str>),
+
+
 }
 
 #[allow(dead_code)]
@@ -140,8 +144,8 @@ pub struct Extra<'a,T:Clone> {
 pub type Cursor<'a,T=()> = LocatedSpan<&'a str, Extra<'a,T>>;
 pub type CResult<'a , O,T=()> = nom::IResult<Cursor<'a,T>, O>;
 
-#[allow(dead_code)] //will use for the parser
-pub type TResult<'a,'b,O> = nom::IResult<crate::token::Cursor<'a,'b>, O, ()>;
+//#[allow(dead_code)] //will use for the parser
+pub type TResult<'a,'b,O , E=()> = nom::IResult<crate::token::Cursor<'a,'b>, O, E>;
 
 pub fn make_cursor<'a>(code:&'a str,diag: &'a Diagnostics<'a>,) -> Cursor<'a> {
 	Cursor::new_extra(code, Extra{diag,tag:()})

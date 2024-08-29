@@ -8,8 +8,11 @@ use codespan_reporting::term::{
 use nom_locate::LocatedSpan;
 use std::error::Error;
 
-use crate::errors::{UserSideError, Diagnostics};
+use crate::errors::{UserSideError};
+#[cfg(test)]
 use crate::lex::lex_full_text;
+#[cfg(test)]
+use crate::errors::Diagnostics;
 
 impl<'a> UserSideError<'a> {
     pub fn to_codespan_diagnostic(&self) -> PrintDiagnostic<()> {
@@ -19,6 +22,9 @@ impl<'a> UserSideError<'a> {
                 handle_int_overflow_error(span, *value)
             }
             UserSideError::UnclosedString(span, ch) => handle_unclosed_string(span, *ch),
+            UserSideError::ExtraPar(span) => todo!(),
+            &UserSideError::UnclosedPar(start, end) => todo!(),
+
             UserSideError::UnokwenToken(span) => handle_unkowen_token_error(span),
         }
     }
@@ -70,6 +76,7 @@ fn handle_unclosed_string(span: &LocatedSpan<&str>, ch: char) -> PrintDiagnostic
 }
 
 // Function to print errors to standard output
+#[allow(dead_code)]
 pub fn print_errors_to_stdout<'a>(
     errors: &[UserSideError<'a>],
     source: &'a str,
@@ -87,6 +94,7 @@ pub fn print_errors_to_stdout<'a>(
 }
 
 // Function to gather errors into a string buffer
+#[allow(dead_code)]
 pub fn gather_errors_to_buffer<'a>(errors: &[UserSideError<'a>], source: &'a str) -> String {
     let file = SimpleFile::new("source", source);
     let mut buffer = Buffer::ansi();

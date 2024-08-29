@@ -2,8 +2,8 @@ mod lex;
 mod errors;
 mod token;
 
-// mod parse;
-// mod ast;
+mod parse;
+mod ast;
 
 mod reporting;
 
@@ -43,24 +43,3 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-    
-// use codespan_reporting::diagnostic::{Diagnostic, Label};
-// use codespan_reporting::term;
-// use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
-// use codespan_reporting::files::SimpleFile;
-
-// fn main() {
-//     let file = SimpleFile::new("sample.txt", "丐, 丑 let x = 1;\nlet y = 🐍;\n");
-
-//     let diagnostic = Diagnostic::error()
-//         .with_message("Unexpected emoji")
-//         .with_labels(vec![
-//             Label::primary((), 29..30)
-//                 .with_message("Found an emoji here"),
-//         ]);
-
-//     let mut writer = StandardStream::stderr(ColorChoice::Auto);
-//     let config = term::Config::default();
-
-//     term::emit(&mut writer, &config, &file, &diagnostic).unwrap();
-// }

@@ -198,7 +198,10 @@ fn skip_to_str_end(input: &str, del: char) -> Result<usize, usize> {
 
         if c == '\\' {
             // If a backslash is found, skip the next character (escape sequence)
-            if let Some(_) = chars.next() {
+            if let Some(c2) = chars.next() {
+                if c2== '\n'{
+                    return Err(count);
+                }
                 count += 1; // Count the escaped character as well
                 continue;
             } else {
