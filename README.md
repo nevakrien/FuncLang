@@ -3,11 +3,11 @@ my first ever "real" languge attempt. going with "everything is a function" simi
 so arrays are just functions... that return %out_of_bounds for anything out of bounds. hopefully the compiler can optimize it away.
 
 the languge is safe and GCed. and it probably wants to be JIT compiled with an automatically parallel runtime.
+I am considering making the runtime start runing before full parsing of the text is done. this is fine to do because we are pure functional.
 
 # Dev Log
 
-by deafualt everything is implemented 100% safe but allows for unsafe mode that has the same API and thus tested well.
-unsafe mode is not ment to be extended by other devlopers... it has a lot of "safe" functions. as long as the unified API is used things should translate both ways.
+by deafualt everything is implemented 100% safe. I had unsafe mode but there wasnt a real performance gain and it does not work well with the projects goals. the refcell on diagnostics apears to be fine since every lock on it is a print anyway. tested with unsafe to be sure. 
 
 right now this is just the lexer going to work up to the parser.
 there is an obvious optimization of spliting things to lines and then parse with an atomic work stealing queue.

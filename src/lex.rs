@@ -226,7 +226,7 @@ fn lex_string<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
     let (input,del) = one_of("\"'")(input)?;
     match skip_to_str_end(input.fragment(),del) {
         Ok(u) => {
-            let (input,ans) = original_input.take_split(u+1);//original del dels
+            let (input,ans) = original_input.take_split(u+1);//original del + new stuff
             Ok((input,LexToken::new(ans.map_extra(|_| {
                 LexTag::String(del)
             }))))    
@@ -238,7 +238,7 @@ fn lex_string<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
             ));
 
             Ok((input,LexToken::new(ans.map_extra(|_| {
-                LexTag::String(del)
+                LexTag::PoisonString(del)
             }))))
         }
     }
@@ -596,7 +596,7 @@ fn test_lex_string() {
     let result = lex_string(input.clone());
     assert!(result.is_ok(), "Should return a token despite being unclosed");
     let (_, token) = result.unwrap();
-    assert_eq!(token.inner.extra, LexTag::String('"'));
+    assert_eq!(token.inner.extra, LexTag::PoisonString('"'));
     assert_eq!(token.inner.fragment(), &"\"Unclosed string example");
     assert!(!diag.borrow_errors().is_empty(), "Should log an error for unclosed string");
 

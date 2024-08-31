@@ -47,6 +47,7 @@ pub enum LexTag {
     Ender(char),
     Op(BinaryOp),
     String(char),
+    PoisonString(char),
     Unknowen(),
 }
 

@@ -1,11 +1,7 @@
 // #![allow(dead_code)] //this module is being consumed
-#[cfg(feature = "safe_mode")]
 use core::cell::RefCell;
-#[cfg(feature = "safe_mode")]
 use core::cell::Ref;
 
-#[cfg(feature = "unsafe_mode")]
-use core::cell::UnsafeCell;
 
 
 use  nom_locate::LocatedSpan;
@@ -32,34 +28,16 @@ pub enum UserSideWarning<'a> {
 
 #[derive(Debug)]
 pub struct Diagnostics<'a> {
-    #[cfg(feature = "safe_mode")]
     errors: RefCell<Vec<UserSideError<'a>>>,
-    #[cfg(feature = "safe_mode")]
     warnings: RefCell<Vec<UserSideWarning<'a>>>,
-
-    #[cfg(feature = "unsafe_mode")]
-    errors: UnsafeCell<Vec<UserSideError<'a>>>,
-    #[cfg(feature = "unsafe_mode")]
-    warnings: UnsafeCell<Vec<UserSideWarning<'a>>>,
 }
 
 impl<'a> PartialEq for Diagnostics<'a> {
     fn eq(&self, other: &Self) -> bool {
-        #[cfg(feature = "safe_mode")]
-        {
-            // Correctly dereference Ref<T> to &T before comparison
-            (*self.errors.borrow()).eq(&*other.errors.borrow()) &&
-            (*self.warnings.borrow()).eq(&*other.warnings.borrow())
-        }
 
-        #[cfg(feature = "unsafe_mode")]
-        {
-            // In unsafe_mode, directly access the UnsafeCell contents
-            unsafe {
-                (*self.errors.get()).eq(&*other.errors.get()) &&
-                (*self.warnings.get()).eq(&*other.warnings.get())
-            }
-        }
+        (*self.errors.borrow()).eq(&*other.errors.borrow()) &&
+        (*self.warnings.borrow()).eq(&*other.warnings.borrow())
+        
     }
 }
 
@@ -68,58 +46,25 @@ impl<'a> PartialEq for Diagnostics<'a> {
 impl<'a> Diagnostics<'a>{
 	pub fn new() -> Self {
         Diagnostics {
-            #[cfg(feature = "safe_mode")]
             errors: RefCell::new(vec![]),
-            #[cfg(feature = "safe_mode")]
             warnings: RefCell::new(vec![]),
-
-            #[cfg(feature = "unsafe_mode")]
-            errors: UnsafeCell::new(vec![]),
-            #[cfg(feature = "unsafe_mode")]
-            warnings: UnsafeCell::new(vec![]),
         }
     }
 
-    #[cfg(feature = "safe_mode")]
 	pub fn borrow_errors(&self) -> Ref<Vec<UserSideError<'a>>>{
 		self.errors.borrow()
 	}
 
-	#[cfg(feature = "safe_mode")]
 	pub fn borrow_warnings(&self) -> Ref<Vec<UserSideWarning<'a>>> {
 		self.warnings.borrow()
 	}
 
-    #[cfg(feature = "unsafe_mode")]
-    pub fn borrow_errors(&self) -> &Vec<UserSideError<'a>> {
-        unsafe { &*self.errors.get() }
-    }
-
-    #[cfg(feature = "unsafe_mode")]
-    pub fn borrow_warnings(&self) -> &Vec<UserSideWarning<'a>> {
-       unsafe { &*self.warnings.get() }
-    }
-
     pub fn report_error(&self, error: UserSideError<'a>) {
-        #[cfg(feature = "safe_mode")]
-        {
-            self.errors.borrow_mut().push(error);
-        }
-        #[cfg(feature = "unsafe_mode")]
-        {
-            unsafe { (*self.errors.get()).push(error); }
-        }
+    	self.errors.borrow_mut().push(error);
     }
 
     pub fn report_warning(&self, warning: UserSideWarning<'a>) {
-        #[cfg(feature = "safe_mode")]
-        {
-            self.warnings.borrow_mut().push(warning);
-        }
-        #[cfg(feature = "unsafe_mode")]
-        {
-            unsafe { (*self.warnings.get()).push(warning); }
-        }
+    	self.warnings.borrow_mut().push(warning);
     }
 }
 

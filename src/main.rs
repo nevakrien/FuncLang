@@ -1,3 +1,7 @@
+use std::env;
+use std::str::FromStr;
+use std::time::Instant;
+
 mod lex;
 mod errors;
 mod token;
@@ -8,14 +12,43 @@ mod ast;
 mod reporting;
 
 use crate::lex::lex_full_text;
-use crate::errors::{Diagnostics};  
+use crate::errors::Diagnostics;
 use crate::reporting::print_errors_to_stdout;
 
 use std::fs::File;
-use std::io::{Read,stdout,Write};
+use std::io::{self, Read, stdout, Write};
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let start = Instant::now();
+    
+    // Get the number of iterations from the command line arguments, defaulting to 1
+    let args: Vec<String> = env::args().collect();
+    let iterations = if args.len() > 1 {
+        usize::from_str(&args[1]).unwrap_or(1)
+    } else {
+        1
+    };
+
+
+    // Run the benchmark
+    for i in 1..=iterations {
+        // Start the timer
+
+        // Run the sample
+        run_on_sample()?;
+
+        // Stop the timer
+        let duration = start.elapsed();
+
+        // Print the duration
+        println!("Iteration {}: Time elapsed  is: {:?}", i, duration);
+    }
+
+    Ok(())
+}
+
+fn run_on_sample() -> Result<(), Box<dyn std::error::Error>> {
     // Specify the path to the file you want to lex
     let path = Path::new("sample.txt");
     
