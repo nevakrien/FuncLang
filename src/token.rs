@@ -8,7 +8,7 @@ use core::ops::Index;
 use nom::Offset;
 use nom::UnspecializedInput;
 
-use crate::errors::{UserSideError,UserSideWarning};
+use crate::errors::{UserSideError};//UserSideWarning
 
 
 #[derive(Debug, PartialEq)]

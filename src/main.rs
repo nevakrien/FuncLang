@@ -15,7 +15,7 @@ use crate::lex::lex_full_text;
 use crate::reporting::print_errors_to_stdout;
 
 use std::fs::File;
-use std::io::{self, Read, stdout, Write};
+use std::io::{Read, stdout, Write};
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

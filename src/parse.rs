@@ -1,39 +1,39 @@
-use crate::token::{TokenSlice,LexToken,LexTag};
-use crate::ast::{};
-use crate::errors::{UserSideError};
+// use crate::token::{TokenSlice,LexToken,LexTag};
+// use crate::ast::{};
+// use crate::errors::{UserSideError};
 
-use nom::bytes::complete::take;
-use nom::bytes::complete::take_till;
-use nom::combinator::map;
+// use nom::bytes::complete::take;
+// use nom::bytes::complete::take_till;
+// use nom::combinator::map;
 
-use nom::InputLength;
+// use nom::InputLength;
 
-use nom::{Err::Error};
+// use nom::{Err::Error};
 
-// use crate::errors::TResult;
+// // use crate::errors::TResult;
 
 
-fn is_opener(c:char) -> bool {
-	match c {
-		'{' => true,
-		'[' => true,
-		'(' => true,
+// fn is_opener(c:char) -> bool {
+// 	match c {
+// 		'{' => true,
+// 		'[' => true,
+// 		'(' => true,
 
-		')' => false,
-		']' => false,
-		'}' => false,
+// 		')' => false,
+// 		']' => false,
+// 		'}' => false,
 
-		_ => unreachable!()
-	}
-}
+// 		_ => unreachable!()
+// 	}
+// }
 
-fn get_closer(c:char) -> char {
-	match c {
-		'{' => '}',
-		'[' => ']',
-		'(' => ')',
+// fn get_closer(c:char) -> char {
+// 	match c {
+// 		'{' => '}',
+// 		'[' => ']',
+// 		'(' => ')',
 
-		_ => unreachable!()
-	}
-}
+// 		_ => unreachable!()
+// 	}
+// }
 

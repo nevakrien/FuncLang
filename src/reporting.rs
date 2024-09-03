@@ -12,24 +12,57 @@ use crate::errors::{UserSideError};
 #[cfg(test)]
 use crate::lex::lex_full_text;
 
-
 impl<'a> UserSideError<'a> {
-    pub fn to_codespan_diagnostic(&self) -> PrintDiagnostic<()> {
+    pub fn to_codespan_diagnostics(&self) -> Vec<PrintDiagnostic<()>> {
         match self {
-            UserSideError::OverflowError(span) => handle_overflow_error(span),
+            UserSideError::OverflowError(span) => vec![handle_overflow_error(span)],
             UserSideError::IntOverflowError(span, value) => {
-                handle_int_overflow_error(span, *value)
+                vec![handle_int_overflow_error(span, *value)]
             }
-            UserSideError::UnclosedString(span, ch) => handle_unclosed_string(span, *ch),
-            
-
-            UserSideError::UnokwenToken(span) => handle_unkowen_token_error(span),
-
-            UserSideError::ExtraPar(span) => todo!(),
-            &UserSideError::UnclosedPar(start, end) => todo!(),
-            _ => todo!(),
+            UserSideError::UnclosedString(span, ch) => vec![handle_unclosed_string(span, *ch)],
+            UserSideError::UnokwenToken(span) => vec![handle_unkowen_token_error(span)],
+            UserSideError::ExtraPar(span) => vec![handle_extra_par_error(span)],
+            UserSideError::UnclosedPar(start, end) => vec![handle_unclosed_par_error(start, end)],
+            UserSideError::Compound(errors) => handle_compound_error(errors),
         }
     }
+}
+
+// Function to create a diagnostic for ExtraPar
+fn handle_extra_par_error(span: &LocatedSpan<&str>) -> PrintDiagnostic<()> {
+    let start = span.location_offset();
+    let end = start + span.fragment().len();
+
+    PrintDiagnostic::error()
+        .with_message("Unexpected extra parenthesis")
+        .with_labels(vec![Label::primary((), start..end)])
+}
+
+// Function to create a diagnostic for UnclosedPar
+fn handle_unclosed_par_error(start: &LocatedSpan<&str>, end: &LocatedSpan<&str>) -> PrintDiagnostic<()> {
+    let start_offset = start.location_offset();
+    let end_offset = end.location_offset() + end.fragment().len();
+
+    PrintDiagnostic::error()
+        .with_message("Unclosed parenthesis")
+        .with_labels(vec![
+            Label::primary((), start_offset..start_offset + start.fragment().len())
+                .with_message("Opened here"),
+            Label::primary((), end_offset..end_offset)
+                .with_message("Expected a closing parenthesis here"),
+        ])
+}
+
+// Function to create diagnostics for Compound errors
+fn handle_compound_error<'a>(errors: &[UserSideError<'a>]) -> Vec<PrintDiagnostic<()>> {
+    let mut diagnostics = Vec::new();
+
+    for error in errors {
+        let sub_diagnostics = error.to_codespan_diagnostics();
+        diagnostics.extend(sub_diagnostics);
+    }
+
+    diagnostics
 }
 
 fn handle_unkowen_token_error(span: &LocatedSpan<&str>) -> PrintDiagnostic<()> {
@@ -88,8 +121,9 @@ pub fn print_errors_to_stdout<'a>(
     let config = term::Config::default();
 
     for error in errors {
-        let diagnostic = error.to_codespan_diagnostic();
-        term::emit(&mut writer.lock(), &config, &file, &diagnostic)?;
+        for diagnostic in error.to_codespan_diagnostics() {
+            term::emit(&mut writer.lock(), &config, &file, &diagnostic)?;
+        }
     }
 
     Ok(())
@@ -103,8 +137,9 @@ pub fn gather_errors_to_buffer<'a>(errors: &[UserSideError<'a>], source: &'a str
     let config = term::Config::default();
 
     for error in errors {
-        let diagnostic = error.to_codespan_diagnostic();
-        term::emit(&mut buffer, &config, &file, &diagnostic).unwrap();
+        for diagnostic in error.to_codespan_diagnostics() {
+            term::emit(&mut buffer, &config, &file, &diagnostic).unwrap();
+        }
     }
 
     String::from_utf8(buffer.into_inner()).unwrap()
@@ -113,6 +148,27 @@ pub fn gather_errors_to_buffer<'a>(errors: &[UserSideError<'a>], source: &'a str
 #[test]
 fn test_print() {
     let source_code = "let x = 9223372036854775808;  🏳️‍⚧️ aaa  :ww \n922337203685477580822\"unterminated string;\n ";
+    let mut errors = Vec::new();
+
+    // Create a Cursor from the content
+    for token in lex_full_text(source_code) {
+        println!("{:?}", token);
+        if let Some(e) = token.error {
+            errors.push(*e);
+        }
+    }
+    
+    // Print errors to stdout
+    // print_errors_to_stdout(&diag.borrow_errors(), source_code).unwrap();
+    
+    // Gather errors into buffer and print
+    let buffer = gather_errors_to_buffer(&errors, source_code);
+    println!("Collected Errors:\n{}", buffer);
+}
+
+#[test]
+fn test_compound_print() {
+    let source_code = "999999999999999999999999999999999999999999999999999999999999999999999999999999999.999999999999999999999999999999999999999999999999999999";
     let mut errors = Vec::new();
 
     // Create a Cursor from the content
