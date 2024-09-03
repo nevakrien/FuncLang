@@ -8,23 +8,22 @@ use core::ops::Index;
 use nom::Offset;
 use nom::UnspecializedInput;
 
-use crate::errors::{Diagnostics,UserSideError,UserSideWarning};
+use crate::errors::{UserSideError,UserSideWarning};
 
-#[derive(Debug, PartialEq, Clone)]
+
+#[derive(Debug, PartialEq)]
 pub struct LexToken<'a> {
-    pub inner: LocatedSpan<&'a str, LexTag>,
+    pub span: LocatedSpan<&'a str>,
+    pub tag: LexTag,
+    pub error: Option<Box<UserSideError<'a>>>,
 }
 
 impl<'a> LexToken<'a> {
-    pub fn new(span: LocatedSpan<&'a str, LexTag>) -> Self {
-        LexToken { inner: span }
+    pub fn new(span: LocatedSpan<&'a str>,tag : LexTag) -> Self {
+        LexToken { span: span, tag:tag , error:None}
     }
-    pub fn tag(&self) -> LexTag {
-    	self.inner.extra.clone()
-    }
-
-    pub fn span(&self) -> LocatedSpan<&'a str> {
-        self.inner.clone().map_extra(|_| ())
+     pub fn err_new(span: LocatedSpan<&'a str>,tag : LexTag, error:UserSideError<'a>) -> Self {
+        LexToken { span: span, tag:tag , error:Some(Box::new(error))}
     }
 }
 
@@ -86,8 +85,6 @@ pub struct TokenSlice<'a, 'b, D = () > {
     tokens: &'b [LexToken<'a>],
     pub diag: D,
 }
-pub type Cursor<'a,'b> = TokenSlice<'a, 'b, &'a Diagnostics<'a>>;
-pub type StaticCursor<'a> = Cursor<'a,'a>;
 
 impl<'a, 'b, D> TokenSlice<'a, 'b, D> {
     pub fn new(tokens: &'b [LexToken<'a>], diag: D) -> Self {
@@ -111,32 +108,32 @@ impl<'a, 'b, D: Clone> TokenSlice<'a, 'b, D> {
 }
 
 
-// Implement methods to convert between types with and without diagnostics
-impl<'a, 'b> TokenSlice<'a, 'b, &Diagnostics<'a>> {
-    pub fn strip_diag(self) -> TokenSlice<'a, 'b> {
-        TokenSlice {
-            tokens: self.tokens,
-            diag: (),
-        }
-    }
-    pub fn report_error(&self,error: UserSideError<'a>) {
-    	self.diag.report_error(error);
-    }
+// // Implement methods to convert between types with and without diagnostics
+// impl<'a, 'b> TokenSlice<'a, 'b, &Diagnostics<'a>> {
+//     pub fn strip_diag(self) -> TokenSlice<'a, 'b> {
+//         TokenSlice {
+//             tokens: self.tokens,
+//             diag: (),
+//         }
+//     }
+//     pub fn report_error(&self,error: UserSideError<'a>) {
+//     	self.diag.report_error(error);
+//     }
 
-    pub fn report_warning(&self, warning: UserSideWarning<'a>) {
-        self.diag.report_warning(warning);
-    }
-}
+//     pub fn report_warning(&self, warning: UserSideWarning<'a>) {
+//         self.diag.report_warning(warning);
+//     }
+// }
 
 
-impl<'a, 'b> TokenSlice<'a, 'b,()> {
-    pub fn add_diag(self, diag: &'a Diagnostics<'a>) -> TokenSlice<'a, 'b, &'a Diagnostics<'a>> {
-        TokenSlice {
-            tokens: self.tokens,
-            diag,
-        }
-    }
-}
+// impl<'a, 'b> TokenSlice<'a, 'b,()> {
+//     pub fn add_diag(self, diag: &'a Diagnostics<'a>) -> TokenSlice<'a, 'b, &'a Diagnostics<'a>> {
+//         TokenSlice {
+//             tokens: self.tokens,
+//             diag,
+//         }
+//     }
+// }
 
 impl<'a, 'b, D> Index<usize> for TokenSlice<'a, 'b, D>
 {

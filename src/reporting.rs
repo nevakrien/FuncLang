@@ -11,8 +11,7 @@ use std::error::Error;
 use crate::errors::{UserSideError};
 #[cfg(test)]
 use crate::lex::lex_full_text;
-#[cfg(test)]
-use crate::errors::Diagnostics;
+
 
 impl<'a> UserSideError<'a> {
     pub fn to_codespan_diagnostic(&self) -> PrintDiagnostic<()> {
@@ -22,10 +21,13 @@ impl<'a> UserSideError<'a> {
                 handle_int_overflow_error(span, *value)
             }
             UserSideError::UnclosedString(span, ch) => handle_unclosed_string(span, *ch),
-            UserSideError::ExtraPar(span) => todo!(),
-            &UserSideError::UnclosedPar(start, end) => todo!(),
+            
 
             UserSideError::UnokwenToken(span) => handle_unkowen_token_error(span),
+
+            UserSideError::ExtraPar(span) => todo!(),
+            &UserSideError::UnclosedPar(start, end) => todo!(),
+            _ => todo!(),
         }
     }
 }
@@ -111,21 +113,20 @@ pub fn gather_errors_to_buffer<'a>(errors: &[UserSideError<'a>], source: &'a str
 #[test]
 fn test_print() {
     let source_code = "let x = 9223372036854775808;  🏳️‍⚧️ aaa  :ww \n922337203685477580822\"unterminated string;\n ";
-    let diag = Diagnostics::new();
-    
-    // Simulate lexing process and error collection
-    for token in lex_full_text(source_code, &diag) {
+    let mut errors = Vec::new();
+
+    // Create a Cursor from the content
+    for token in lex_full_text(source_code) {
         println!("{:?}", token);
-    }
-    
-    for error in diag.borrow_errors().iter() {
-        println!("{:?}", error);
+        if let Some(e) = token.error {
+            errors.push(*e);
+        }
     }
     
     // Print errors to stdout
     // print_errors_to_stdout(&diag.borrow_errors(), source_code).unwrap();
     
     // Gather errors into buffer and print
-    let buffer = gather_errors_to_buffer(&diag.borrow_errors(), source_code);
+    let buffer = gather_errors_to_buffer(&errors, source_code);
     println!("Collected Errors:\n{}", buffer);
 }

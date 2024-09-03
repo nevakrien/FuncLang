@@ -1,4 +1,4 @@
-use crate::token::{Cursor,TokenSlice,LexToken,LexTag};
+use crate::token::{TokenSlice,LexToken,LexTag};
 use crate::ast::{};
 use crate::errors::{UserSideError};
 
@@ -10,7 +10,7 @@ use nom::InputLength;
 
 use nom::{Err::Error};
 
-use crate::errors::TResult;
+// use crate::errors::TResult;
 
 
 fn is_opener(c:char) -> bool {

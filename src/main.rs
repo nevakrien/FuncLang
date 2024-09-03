@@ -12,7 +12,6 @@ mod ast;
 mod reporting;
 
 use crate::lex::lex_full_text;
-use crate::errors::Diagnostics;
 use crate::reporting::print_errors_to_stdout;
 
 use std::fs::File;
@@ -61,17 +60,18 @@ fn run_on_sample() -> Result<(), Box<dyn std::error::Error>> {
 
     let code = &content;
 
+    let mut errors = Vec::new();
+
     // Create a Cursor from the content
-    let diag = Diagnostics::new();
-    for token in lex_full_text(code,&diag) {
+    for token in lex_full_text(code) {
         println!("{:?}", token);
+        if let Some(e) = token.error {
+            errors.push(*e);
+        }
     }
 
-    for error in diag.borrow_errors().iter(){
-        println!("{:?}", error);
-    }
 
-    print_errors_to_stdout(&diag.borrow_errors(),code)?;
+    print_errors_to_stdout(&errors,code)?;
     stdout().flush()?;
 
     Ok(())

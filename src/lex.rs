@@ -5,23 +5,24 @@ use nom::character::complete::{digit1,one_of,anychar};
 
 use nom::multi::fold_many0;
 use nom::branch::alt;	
+use nom::IResult;
 
 // use nom::character::complete::char as nom_char;
 
-use crate::errors::{Cursor,CResult,strip_reporting,UserSideError};
+use crate::errors::{UserSideError,combine_errors};
 use nom::combinator::{opt};
 // use nom::bytes::complete::is_not;
 use nom::InputTake;
 use nom::Offset;
 
-use crate::errors::{Diagnostics,make_cursor};
-
 use crate::token::{LexToken,BinaryOp,LexTag};
+use nom_locate::LocatedSpan;
+
 
 #[no_mangle]
 //#[allow(dead_code)]
-pub fn lex_full_text<'a>(input: &'a str,diag :&'a Diagnostics<'a>) -> Vec<LexToken<'a>> {
-    let mut cursor = make_cursor(input,diag);
+pub fn lex_full_text<'a>(input: &'a str) -> Vec<LexToken<'a>> {
+    let mut cursor = LocatedSpan::new(input);
     let mut ans = Vec::new();
     loop {
         match lext_text(cursor) {
@@ -37,9 +38,11 @@ pub fn lex_full_text<'a>(input: &'a str,diag :&'a Diagnostics<'a>) -> Vec<LexTok
     ans
 }
 
+pub type LexResult<'a> = nom::IResult<LocatedSpan<&'a str>, LexToken<'a>,()>;
+
 #[no_mangle]
 //#[allow(dead_code)]
-pub fn lext_text<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
+pub fn lext_text<'a>(input: LocatedSpan<&'a str>) -> LexResult<'a>{
 	//TODO add extra token
 	//order is from most common to least
 	alt((
@@ -54,29 +57,24 @@ pub fn lext_text<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
         lex_unknowen,
 	))(skip_whitespace(input))
 }
-fn lex_unknowen<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
+fn lex_unknowen<'a>(input: LocatedSpan<&'a str>) -> LexResult<'a>{
     let (input,x)=recognize(pair(anychar,take_while(|c:char| !c.is_ascii())))(input)?;
-    input.extra.diag.report_error(UserSideError::UnokwenToken(strip_reporting(x.clone())));
-    let ans = strip_reporting(x).map_extra(|()| LexTag::Unknowen());
-    Ok((input,LexToken::new(ans)))
+    Ok((input,LexToken::err_new(x,LexTag::Unknowen(),UserSideError::UnokwenToken(x.clone()))))
 }
 
-fn lex_atom<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
-    let (input,s) = recognize(preceded(
+fn lex_atom<'a>(input: LocatedSpan<&'a str>) -> LexResult<'a> {
+    let (input,ans) = recognize(preceded(
         one_of("%:"),
         pair(
             take_while1(|c:char| c.is_alphabetic()   || c=='_'),
             take_while( |c:char| c.is_alphanumeric() || c=='_')
         )
     ))(input)?;
-    let ans = strip_reporting(s).map_extra(|()| {
-        LexTag::Atom()
-    });
-    Ok((input, LexToken::new(ans)))
+    Ok((input, LexToken::new(ans,LexTag::Atom())))
 }
 
-fn skip_whitespace<'a>(input: Cursor<'a>) -> Cursor<'a> {
-	fn typed_take_whitespace<'a>(input: Cursor<'a>) -> CResult<'a,Cursor<'a>>{
+fn skip_whitespace<'a>(input: LocatedSpan<&'a str>) -> LocatedSpan<&'a str> {
+	fn typed_take_whitespace<'a>(input: LocatedSpan<&'a str>) -> IResult<LocatedSpan<&'a str>,LocatedSpan<&'a str>>{
 		take_while( |c:char| c.is_whitespace())(input)
 	}
 	let s=opt(typed_take_whitespace)(input);
@@ -84,23 +82,19 @@ fn skip_whitespace<'a>(input: Cursor<'a>) -> Cursor<'a> {
 	return ans;
 }
 
-fn lex_delimiter<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
+fn lex_delimiter<'a>(input: LocatedSpan<&'a str>) -> LexResult<'a>{
 	let(input,token) = recognize(one_of("{}[]()"))(input)?;
-	let ans = strip_reporting(token.clone()).map_extra(|()| {
-		LexTag::Delimiter(token.fragment().chars().next().unwrap())
-	});
-	Ok((input,LexToken::new(ans)))
+	let tag = LexTag::Delimiter(token.fragment().chars().next().unwrap());
+	Ok((input,LexToken::new(token,tag)))
 }
 
-fn lex_ender<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
+fn lex_ender<'a>(input: LocatedSpan<&'a str>) -> LexResult<'a>{
     let(input,token) = recognize(one_of(";,"))(input)?;
-    let ans = strip_reporting(token.clone()).map_extra(|()| {
-        LexTag::Ender(token.fragment().chars().next().unwrap())
-    });
-    Ok((input,LexToken::new(ans)))
+    let tag = LexTag::Ender(token.fragment().chars().next().unwrap());
+    Ok((input,LexToken::new(token,tag)))
 }
 
-fn lex_operator<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>> {
+fn lex_operator<'a>(input: LocatedSpan<&'a str>) -> LexResult<'a> {
     let (input, token) = alt((
         // 1. Single-char operators with no associated double-char version
         recognize(one_of("+/.%")),
@@ -160,29 +154,28 @@ fn lex_operator<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>> {
         _ => unreachable!(),
     };
 
-    let ans = strip_reporting(token.clone()).map_extra(|()| op_tag);
-    Ok((input, LexToken::new(ans)))
+    Ok((input, LexToken::new(token,op_tag)))
 }
 
-fn lex_comment<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>>{
+fn lex_comment<'a>(input: LocatedSpan<&'a str>) -> LexResult<'a>{
 	recognize(preceded(
 		is_a("#"),
 		take_till(|c| c=='\n'),
 		// take_while(|c| c=='\n')
 	))(input)	
 	.map(|(i,x)| 
-		(i,LexToken::new(strip_reporting(x).map_extra(|()| LexTag::Comment())))
+		(i,LexToken::new(x,LexTag::Comment()))
 	)
 }
 
 
-fn lex_word<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
+fn lex_word<'a>(input: LocatedSpan<&'a str>) -> LexResult<'a>{
 	recognize(pair(
 		take_while1(|c:char| c.is_alphabetic()   || c=='_'),
 		take_while( |c:char| c.is_alphanumeric() || c=='_')
 	))(input)
 	.map(|(i,x)| 
-		(i,LexToken::new(strip_reporting(x).map_extra(|()| LexTag::Word())))
+		(i,LexToken::new(x,LexTag::Word()))
 	)		
 }
 
@@ -220,26 +213,26 @@ fn skip_to_str_end(input: &str, del: char) -> Result<usize, usize> {
     Err(count)
 }
 
-fn lex_string<'a>(input: Cursor<'a>) -> CResult<'a,LexToken<'a>> {
+fn lex_string<'a>(input: LocatedSpan<&'a str>) -> LexResult<'a> {
     let original_input = input.clone();
 
     let (input,del) = one_of("\"'")(input)?;
     match skip_to_str_end(input.fragment(),del) {
         Ok(u) => {
             let (input,ans) = original_input.take_split(u+1);//original del + new stuff
-            Ok((input,LexToken::new(ans.map_extra(|_| {
-                LexTag::String(del)
-            }))))    
+            Ok((input,LexToken::new(ans,
+                LexTag::String(del))))
         }
         Err(u) => {
             let (input,ans) = original_input.take_split(u+1);
-            input.extra.diag.report_error(UserSideError::UnclosedString(
-                strip_reporting(ans.clone()),del
-            ));
+            
 
-            Ok((input,LexToken::new(ans.map_extra(|_| {
-                LexTag::PoisonString(del)
-            }))))
+            Ok((input,LexToken::err_new(ans,
+                LexTag::PoisonString(del),
+                UserSideError::UnclosedString(
+                    ans.clone(),del
+                )
+            )))
         }
     }
 }
@@ -259,9 +252,9 @@ fn after_dot_to_float(digits: u64) -> f64 {
     digits as f64 / divisor as f64
 }
 
-fn lex_number<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>>{
+fn lex_number<'a>(input: LocatedSpan<&'a str>) -> LexResult<'a>{
 	let (remaining_input, sign_char) = opt(one_of("+-"))(input.clone())?;
-    let (remaining_input, value) = uint_underscored(remaining_input)?;
+    let (remaining_input, (value,error)) = uint_underscored(remaining_input)?;
     let (remaining_input,dot) = opt(is_a("."))(remaining_input)?;
 
     let sign = match sign_char {
@@ -269,30 +262,29 @@ fn lex_number<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>>{
         _ => 1i64, 
     };
 
-    
+    let mut error : Option<Box<UserSideError<'a>>>=  error;
+    let mut error2 : Option<Box<UserSideError<'a>>>=  None;
 
     match dot {
     	None => {
 
     		let consumed_len = input.offset(&remaining_input);
-    		let (_, consumed_token) = input.take_split(consumed_len);
-    		let token_base = strip_reporting(consumed_token);
+    		let (_, token_base) = input.take_split(consumed_len);
 			
 			let signed_value = sign*value.try_into().unwrap_or_else(|_| {
-    			input.extra.diag.report_error(
+    			error2= Some(Box::new(
     				UserSideError::IntOverflowError(
             			token_base.clone(), 
             			value
             		)
-            	);
+            	));
+
    				i64::MAX //probably not used
 			});
 
-			let lex_token = token_base.map_extra(|()| {
-			    LexTag::Int(signed_value)
-			});    
-
-    		Ok((remaining_input, LexToken::new(lex_token)))
+            let mut lex_token =  LexToken::new(token_base,LexTag::Int(signed_value));
+            lex_token.error = combine_errors(error,error2);
+    		Ok((remaining_input, lex_token))
     	}
 
     	Some(_) => {
@@ -302,8 +294,9 @@ fn lex_number<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>>{
     			Err(_) => {
     				remaining_input
     			},
-    			Ok((remaining_input,after_dot)) => {
-    				
+    			Ok((remaining_input,(after_dot,error2))) => {
+    				error = combine_errors(error,error2);
+
     				fval+=after_dot_to_float(after_dot);
                     remaining_input
     			}
@@ -311,31 +304,27 @@ fn lex_number<'a>(input: Cursor<'a>) -> CResult<'a, LexToken<'a>>{
             fval*=sign as f64;
 
             let consumed_len = input.offset(&remaining_input);
-            let (_, consumed_token) = input.take_split(consumed_len);
-            let token_base = strip_reporting(consumed_token);
-            
-            let lex_token = token_base.map_extra(|()| {
-                LexTag::Float(fval)
-            });    
+            let (_, token_base) = input.take_split(consumed_len);
 
-            Ok((remaining_input, LexToken::new(lex_token)))
+            let mut lex_token =  LexToken::new(token_base,LexTag::Float(fval));
+            lex_token.error = error;
+            Ok((remaining_input, lex_token))
     	}
     }
 }
 
-fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
+fn uint_underscored<'a>(input: LocatedSpan<&'a str>) -> IResult<LocatedSpan<&'a str>,(u64,Option<Box<UserSideError<'a>>>),()>{
 	//rust needs some help on figuring out typing so...
-    fn typed_digit1<'b>(x: Cursor<'b>) -> CResult<'b, &'b str> {
+    fn typed_digit1<'b>(x: LocatedSpan<&'b str>) -> IResult<LocatedSpan<&'b str>, &'b str> {
 	    digit1(x).map(|(i,x)| 
 			(i,*x.fragment())
 		)
 	}
-    let report_input=strip_reporting(input.clone());
+    let report_input=input.clone();
     
     let (input,d)=digit1(input)?;
-	let diag = input.extra.diag;
 	
-
+    // let mut error : Option<Box<UserSideError<'a>>> = None;
 	let mut overflowed = false;
     let first_val = {
         d.parse::<u64>().unwrap_or_else(|_| {
@@ -378,9 +367,12 @@ fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
         // Slice out the relevant part of the original input
         let relevant_input = report_input.take(end - start);
         
-        diag.report_error(UserSideError::OverflowError(relevant_input));
+        let error = UserSideError::OverflowError(relevant_input);
+        Ok((input,(ans,Some(Box::new(error)))))
     }
-    Ok((input,ans))
+    else{
+        Ok((input,(ans,None)))
+    }
 }
 
 
@@ -388,78 +380,72 @@ fn uint_underscored<'a>(input: Cursor<'a>) -> CResult<'a,u64>{
 #[test]
 #[no_mangle]
 fn test_uint_underscored_valid() {
-    let diag = Diagnostics::new();
-
-    let input = make_cursor("111_222_333xyz", &diag);
+    let input = LocatedSpan::new("111_222_333xyz");
     let result = uint_underscored(input.clone());
     assert_eq!(
         result,
-        Ok((input.take_split(11).0, 111_222_333u64))
+        Ok((input.take_split(11).0, (111_222_333u64,None)))
     );
 
-    let input = make_cursor("123_6_22 as", &diag);
+    let input = LocatedSpan::new("123_6_22 as");
     let result = uint_underscored(input.clone());
     assert_eq!(
         result,
-        Ok((input.take_split(8).0, 123_6_22u64))
+        Ok((input.take_split(8).0, (123_6_22u64,None)))
     );
 
-    let input = make_cursor("987654", &diag);
+    let input = LocatedSpan::new("987654");
     let result = uint_underscored(input.clone());
     assert_eq!(
         result,
-        Ok((input.take_split(6).0, 987654u64))
+        Ok((input.take_split(6).0, (987654u64,None)))
     );
 }
 
 #[test]
 #[no_mangle]
 fn test_lex_int_with_signs() {
-    let diag = Diagnostics::new();
-
     // Test positive number with explicit plus sign
-    let input = make_cursor("+1234", &diag);
+    let input = LocatedSpan::new("+1234");
     let result = lex_number(input.clone());
     assert_eq!(
         result,
-        Ok((input.take_split(5).0, LexToken::new(strip_reporting(input.take_split(5).1).map_extra(|()| LexTag::Int(1234)))))
+        Ok((input.take_split(5).0, LexToken::new(input.take_split(5).1,LexTag::Int(1234))))
     );
 
     // Test negative number
-    let input = make_cursor("-5678", &diag);
+    let input = LocatedSpan::new("-5678");
     let result = lex_number(input.clone());
     assert_eq!(
         result,
-        Ok((input.take_split(5).0, LexToken::new(strip_reporting(input.take_split(5).1).map_extra(|()| LexTag::Int(-5678)))))
+        Ok((input.take_split(5).0, LexToken::new(input.take_split(5).1,LexTag::Int(-5678))))
     );
 
     // Test number without sign (implicit positive)
-    let input = make_cursor("9876", &diag);
+    let input = LocatedSpan::new("9876");
     let result = lex_number(input.clone());
     assert_eq!(
         result,
-        Ok((input.take_split(4).0, LexToken::new(strip_reporting(input.take_split(4).1).map_extra(|()| LexTag::Int(9876)))))
+        Ok((input.take_split(4).0, LexToken::new(input.take_split(4).1,LexTag::Int(9876))))
     );
 }
 
 #[test]
 #[no_mangle]
 fn test_skip_whitespace() {
-    let diag = Diagnostics::new();
-
-    let input = make_cursor("   xyz", &diag);
+    let input = LocatedSpan::new("   xyz");
     let result = skip_whitespace(input.clone());
     assert_eq!(result, input.take_split(3).0);
 
-    let input = make_cursor("\t\t123_6_22 as", &diag);
+    let input = LocatedSpan::new("\t\t123_6_22 as");
     let result = skip_whitespace(input.clone());
     assert_eq!(result, input.take_split(2).0);
 
-    let input = make_cursor("\n!!!", &diag);
+    let input = LocatedSpan::new("\n!!!");
     let result = skip_whitespace(input.clone());
     assert_eq!(result, input.take_split(1).0);
 
-    let input = make_cursor("987654", &diag);
+    let input = LocatedSpan::new("987654");
     let result = skip_whitespace(input.clone());
     assert_eq!(result, input); // No whitespace to skip, so it should return the original input
 }
@@ -467,29 +453,27 @@ fn test_skip_whitespace() {
 #[test]
 #[no_mangle]
 fn test_lex_basic_string_with_names_and_comments() {
-    let diag = Diagnostics::new();
-
-    let input = make_cursor("name1 # This is a comment\nname2 # Another comment", &diag);
+    let input = LocatedSpan::new("name1 # This is a comment\nname2 # Another comment");
     let result = lext_text(input);
 
     assert!(result.is_ok());
 
     let (remaining, token1) = result.unwrap();
-    assert_eq!(token1.inner.extra, LexTag::Word());
-    assert_eq!(token1.inner.fragment(), &"name1");
+    assert_eq!(token1.tag, LexTag::Word());
+    assert_eq!(token1.span.fragment(), &"name1");
 
     let result = lext_text(remaining);
     let (remaining, token2) = result.unwrap();
-    assert_eq!(token2.inner.extra, LexTag::Comment());
+    assert_eq!(token2.tag, LexTag::Comment());
     
     let result = lext_text(remaining);
     let (remaining, token3) = result.unwrap();
-    assert_eq!(token3.inner.extra, LexTag::Word());
-    assert_eq!(token3.inner.fragment(), &"name2");
+    assert_eq!(token3.tag, LexTag::Word());
+    assert_eq!(token3.span.fragment(), &"name2");
 
     let result = lext_text(remaining);
     let (remaining, token4) = result.unwrap();
-    assert_eq!(token4.inner.extra, LexTag::Comment());
+    assert_eq!(token4.tag, LexTag::Comment());
     
     // Make sure no tokens left
     assert_eq!(remaining.fragment(), &"");
@@ -497,9 +481,7 @@ fn test_lex_basic_string_with_names_and_comments() {
 #[test]
 #[no_mangle]
 fn test_lex_empty() {
-    let diag = Diagnostics::new();
-
-    let input = make_cursor("", &diag);
+    let input = LocatedSpan::new("");
     let result = lext_text(input);
     assert!(result.is_err());
 }
@@ -507,26 +489,24 @@ fn test_lex_empty() {
 #[test]
 #[no_mangle]
 fn test_lex_invalid_token_error() {
-    let diag = Diagnostics::new();
-
-    let input = make_cursor("name1 🏳️‍⚧️ name2", &diag);
+    let input = LocatedSpan::new("name1 🏳️‍⚧️ name2");
     let result = lext_text(input);
 
     assert!(result.is_ok());
 
     let (remaining, token1) = result.unwrap();
-    assert_eq!(token1.inner.extra, LexTag::Word());
-    assert_eq!(token1.inner.fragment(), &"name1");
+    assert_eq!(token1.tag, LexTag::Word());
+    assert_eq!(token1.span.fragment(), &"name1");
 
     let result = lext_text(remaining);
     
     // This should fail because `🏳️‍⚧️` is an invalid token (for now)
     let (remaining, token2) = result.unwrap();
-    assert_eq!(token2.inner.extra, LexTag::Unknowen());
+    assert_eq!(token2.tag, LexTag::Unknowen());
 
     let (_, token3)=lext_text(remaining).unwrap(); 
     //depending on if the unknowen handeling is good or not. token3 can be anything
-    match token3.inner.extra {
+    match token3.tag {
         LexTag::Unknowen() | LexTag::Word() => {},
         _ => unreachable!("Unexpected tag"),
     };
@@ -535,13 +515,12 @@ fn test_lex_invalid_token_error() {
 #[cfg(test)]
 #[no_mangle]
 fn assert_operator(input: &str, expected_tag: LexTag) {
-    let diag = Diagnostics::new();
-    let cursor = make_cursor(input, &diag);
+    let cursor = LocatedSpan::new(input);
     let result = lex_operator(cursor);
 
     assert!(result.is_ok(), "Failed to parse operator: {}", input);
     let (_, token) = result.unwrap();
-    assert_eq!(token.inner.extra, expected_tag, "Expected {:?} but got {:?}", expected_tag, token.inner.extra);
+    assert_eq!(token.tag, expected_tag, "Expected {:?} but got {:?}", expected_tag, token.tag);
 }
 
 #[test]
@@ -580,114 +559,100 @@ fn test_multi_char_operators() {
 #[test]
 #[no_mangle]
 fn test_lex_string() {
-    let diag = Diagnostics::new();
-
     // Test a valid string with escaped characters
-    let input = make_cursor("\"Hello, world!\\n\" junk", &diag);
+    let input = LocatedSpan::new("\"Hello, world!\\n\" junk");
     let result = lex_string(input.clone());
     assert!(result.is_ok(), "Failed to parse valid string");
     let (remaining, token) = result.unwrap();
-    assert_eq!(token.inner.extra, LexTag::String('"'));
-    assert_eq!(token.inner.fragment(), &"\"Hello, world!\\n\"");
+    assert_eq!(token.tag, LexTag::String('"'));
+    assert_eq!(token.span.fragment(), &"\"Hello, world!\\n\"");
     assert_eq!(remaining.fragment().len(), 5, "Unexpected characters remaining after parsing a valid string");
 
     // Test an unclosed string which should still return a token and log an error
-    let input = make_cursor("\"Unclosed string example", &diag);
+    let input = LocatedSpan::new("\"Unclosed string example");
     let result = lex_string(input.clone());
     assert!(result.is_ok(), "Should return a token despite being unclosed");
     let (_, token) = result.unwrap();
-    assert_eq!(token.inner.extra, LexTag::PoisonString('"'));
-    assert_eq!(token.inner.fragment(), &"\"Unclosed string example");
-    assert!(!diag.borrow_errors().is_empty(), "Should log an error for unclosed string");
+    assert_eq!(token.tag, LexTag::PoisonString('"'));
+    assert_eq!(token.span.fragment(), &"\"Unclosed string example");
+    assert!(token.error.is_some(), "Should log an error for unclosed string");
 
     // Test a single character string
-    let input = make_cursor("'a'", &diag);
+    let input = LocatedSpan::new("'a'");
     let result = lex_string(input.clone());
     assert!(result.is_ok(), "Failed to parse single character string");
     let (remaining, token) = result.unwrap();
-    assert_eq!(token.inner.extra, LexTag::String('\''));
-    assert_eq!(token.inner.fragment(), &"'a'");
+    assert_eq!(token.tag, LexTag::String('\''));
+    assert_eq!(token.span.fragment(), &"'a'");
     assert_eq!(remaining.fragment().len(), 0, "Unexpected characters remaining after parsing a single character string");
 
     // Test a string with special escaped characters
-    let input = make_cursor("\"Escaped \\\" quote\"", &diag);
+    let input = LocatedSpan::new("\"Escaped \\\" quote\"");
     let result = lex_string(input.clone());
     assert!(result.is_ok(), "Failed to parse string with escaped quote");
     let (remaining, token) = result.unwrap();
-    assert_eq!(token.inner.extra, LexTag::String('"'));
-    assert_eq!(token.inner.fragment(), &"\"Escaped \\\" quote\"");
+    assert_eq!(token.tag, LexTag::String('"'));
+    assert_eq!(token.span.fragment(), &"\"Escaped \\\" quote\"");
     assert_eq!(remaining.fragment().len(), 0, "Unexpected characters remaining after parsing a string with escaped quote");
 
     // Test a string containing newlines and tabs
-    let input = make_cursor("\"Line1\\nLine2\\tTabbed\"", &diag);
+    let input = LocatedSpan::new("\"Line1\\nLine2\\tTabbed\"");
     let result = lex_string(input.clone());
     assert!(result.is_ok(), "Failed to parse string with newlines and tabs");
     let (remaining, token) = result.unwrap();
-    assert_eq!(token.inner.extra, LexTag::String('"'));
-    assert_eq!(token.inner.fragment(), &"\"Line1\\nLine2\\tTabbed\"");
+    assert_eq!(token.tag, LexTag::String('"'));
+    assert_eq!(token.span.fragment(), &"\"Line1\\nLine2\\tTabbed\"");
     assert_eq!(remaining.fragment().len(), 0, "Unexpected characters remaining after parsing a string with newlines and tabs");
 }
 
 #[test]
 #[no_mangle]
 fn test_overflow_errors() {
-    let diag = Diagnostics::new();
-
     // Number that is likely too large, causing overflow
-    let input_large_float = make_cursor("999999999999999999999999999999999999999999999999999999999999999999999999999999999.999999999999999999999999999999999999999999999999999999", &diag);
-    let input_large_int = make_cursor("9223372036854775808", &diag);  // Just beyond the range of i64 for positive numbers
+    let input_large_float = LocatedSpan::new("999999999999999999999999999999999999999999999999999999999999999999999999999999999.999999999999999999999999999999999999999999999999999999");
+    let input_large_int = LocatedSpan::new("9223372036854775808");  // Just beyond the range of i64 for positive numbers
 
     // Numbers with underscores
-    let input_with_underscores = make_cursor("2_33_1", &diag);
-    let input_overflow_with_underscores = make_cursor("9999999999_9999999999_9999999999", &diag);
+    let input_with_underscores = LocatedSpan::new("2_33_1");
+    let input_overflow_with_underscores = LocatedSpan::new("9999999999_9999999999_9999999999");
 
     // Test large float overflow
     let result_large_float = lex_number(input_large_float.clone());
-    assert_eq!(diag.borrow_errors().len(), 2, "Expected two overflow errors logged");
-
     assert!(result_large_float.is_ok(), "Failed to parse large float with overflow");
     let (_, token_large_float) = result_large_float.unwrap();
-    assert!(matches!(token_large_float.inner.extra, LexTag::Float(_)), "Expected a float token despite overflow");
+    assert!(matches!(token_large_float.tag, LexTag::Float(_)), "Expected a float token despite overflow");
+    assert!(token_large_float.error.is_some(), "Expected overflow error in the token"); // Check if error is present
+    assert!(matches!(token_large_float.error.as_ref().unwrap().as_ref(), UserSideError::Compound(_)), "Expected 2 Errors ");
 
     // Test large int overflow
     let result_large_int = lex_number(input_large_int.clone());
     assert!(result_large_int.is_ok(), "Failed to parse large int with overflow");
     let (_, token_large_int) = result_large_int.unwrap();
-    assert!(matches!(token_large_int.inner.extra, LexTag::Int(_)), "Expected an int token despite overflow");
+    assert!(matches!(token_large_int.tag, LexTag::Int(_)), "Expected an int token despite overflow");
+    assert!(token_large_int.error.is_some(), "Expected overflow error in the token"); // Check if error is present
+    assert!(matches!(token_large_int.error.as_ref().unwrap().as_ref(), UserSideError::IntOverflowError(_, _)), "Expected IntOverflowError");
 
     // Test number with underscores
     let result_with_underscores = lex_number(input_with_underscores.clone());
     assert!(result_with_underscores.is_ok(), "Failed to parse number with underscores");
     let (_, token_with_underscores) = result_with_underscores.unwrap();
-    assert_eq!(*token_with_underscores.inner.fragment(), "2_33_1", "Parsed value should ignore underscores");
-
+    assert_eq!(*token_with_underscores.span.fragment(), "2_33_1", "Parsed value should ignore underscores");
+    assert!(token_with_underscores.error.is_none(), "Unexpected error for valid number with underscores");
 
     // Test overflow with underscores
     let result_overflow_with_underscores = lex_number(input_overflow_with_underscores.clone());
     assert!(result_overflow_with_underscores.is_ok(), "Failed to parse overflow number with underscores");
     let (_, token_overflow_with_underscores) = result_overflow_with_underscores.unwrap();
-    assert!(matches!(token_overflow_with_underscores.inner.extra, LexTag::Int(_)), "Expected an int token despite overflow");
-
-    // Check diagnostics for errors
-    assert_eq!(diag.borrow_errors().len(), 4, "Expected two overflow errors logged");
-
-    for error in diag.borrow_errors().iter() {
-        match error {
-            UserSideError::OverflowError(_) | UserSideError::IntOverflowError(_,_) => println!("Logged overflow as expected"),
-            _ => panic!("Unexpected error type logged"),
-        }
-    }
+    assert!(matches!(token_overflow_with_underscores.tag, LexTag::Int(_)), "Expected an int token despite overflow");
+    assert!(token_overflow_with_underscores.error.is_some(), "Expected overflow error in the token"); // Check if error is present
+    assert!(matches!(token_overflow_with_underscores.error.as_ref().unwrap().as_ref(), UserSideError::OverflowError(_)), "Expected IntOverflowError");
 }
-
-
 
 #[test]
 #[no_mangle]
 fn test_lex_text_happy_path() {
-    let diag = Diagnostics::new();
-
     // Prepare an input that combines words, operators, strings, numbers, and comments
-    let mut remaining = make_cursor("func + 123 / 2.11_2; 1.\"string\" # aa \" {}comment \n %atom :: :atom", &diag);
+    let mut remaining = LocatedSpan::new("func + 123 / 2.11_2; 1.\"string\" # aa \" {}comment \n %atom :: :atom");
 
     // Expected sequence of tokens
     let expected = vec![
@@ -697,12 +662,12 @@ fn test_lex_text_happy_path() {
         LexTag::Op(BinaryOp::Div), 
         LexTag::Float(2.112),
         LexTag::Ender(';'),
-        LexTag::Float(1.),
+        LexTag::Float(1.0),
         LexTag::String('"'),                // '"string"'
-        LexTag::Comment(),                  // '// comment'
-        LexTag::Atom(),                     // ':atom'
+        LexTag::Comment(),                  // '# comment'
+        LexTag::Atom(),                     // '%atom'
         LexTag::Op(BinaryOp::DoubleDots),
-        LexTag::Atom(),
+        LexTag::Atom(),                     // ':atom'
     ];
 
     // Test parsing sequence
@@ -710,12 +675,11 @@ fn test_lex_text_happy_path() {
         let result = lext_text(remaining);
         assert!(result.is_ok(), "Failed to parse expected token: {:?}", expected_tag);
         let (new_remaining, token) = result.unwrap();
-        assert_eq!(token.inner.extra, expected_tag, "Parsed token does not match expected. Expected {:?}, found {:?}", expected_tag, token.inner.extra);
+        assert_eq!(token.tag, expected_tag, "Parsed token does not match expected. Expected {:?}, found {:?}", expected_tag, token.tag);
         remaining = new_remaining;  // Update remaining input for the next token
     }
 
     // Check that there are no more tokens left after parsing
     assert_eq!(remaining.fragment().len(), 0, "Unexpected characters remaining after parsing all tokens");
-    assert_eq!(diag.borrow_errors().len(), 0, "Unexpected errors");
-    assert_eq!(diag.borrow_warnings().len(), 0, "Unexpected warnings");
+    assert!(remaining.is_empty(), "Expected all input to be consumed");
 }
