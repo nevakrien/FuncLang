@@ -81,14 +81,13 @@ pub enum BinaryOp {
 
 // Define the TokenSlice struct with a generic diagnostic type `D` that defaults to `()`.
 #[derive(Debug, Clone, PartialEq)]
-pub struct TokenSlice<'a, 'b, D = () > {
+pub struct TokenSlice<'a, 'b > {
     tokens: &'b [LexToken<'a>],
-    pub diag: D,
 }
 
-impl<'a, 'b, D> TokenSlice<'a, 'b, D> {
-    pub fn new(tokens: &'b [LexToken<'a>], diag: D) -> Self {
-        TokenSlice { tokens, diag }
+impl<'a, 'b> TokenSlice<'a, 'b> {
+    pub fn new(tokens: &'b [LexToken<'a>]) -> Self {
+        TokenSlice { tokens }
     }
     pub fn last(&self) -> Option<&LexToken<'a>> {
         self.tokens.last()
@@ -96,7 +95,7 @@ impl<'a, 'b, D> TokenSlice<'a, 'b, D> {
 
 }
 
-impl<'a, 'b, D: Clone> TokenSlice<'a, 'b, D> {
+impl<'a, 'b> TokenSlice<'a, 'b> {
     pub fn take_err(&self, count: usize) -> Result<(Self, Self), ()> {
         if self.input_len() >= count {
             let (taken, remaining) = self.take_split(count);
@@ -108,34 +107,7 @@ impl<'a, 'b, D: Clone> TokenSlice<'a, 'b, D> {
 }
 
 
-// // Implement methods to convert between types with and without diagnostics
-// impl<'a, 'b> TokenSlice<'a, 'b, &Diagnostics<'a>> {
-//     pub fn strip_diag(self) -> TokenSlice<'a, 'b> {
-//         TokenSlice {
-//             tokens: self.tokens,
-//             diag: (),
-//         }
-//     }
-//     pub fn report_error(&self,error: UserSideError<'a>) {
-//     	self.diag.report_error(error);
-//     }
-
-//     pub fn report_warning(&self, warning: UserSideWarning<'a>) {
-//         self.diag.report_warning(warning);
-//     }
-// }
-
-
-// impl<'a, 'b> TokenSlice<'a, 'b,()> {
-//     pub fn add_diag(self, diag: &'a Diagnostics<'a>) -> TokenSlice<'a, 'b, &'a Diagnostics<'a>> {
-//         TokenSlice {
-//             tokens: self.tokens,
-//             diag,
-//         }
-//     }
-// }
-
-impl<'a, 'b, D> Index<usize> for TokenSlice<'a, 'b, D>
+impl<'a, 'b> Index<usize> for TokenSlice<'a, 'b>
 {
     type Output = LexToken<'a>;
 
@@ -146,18 +118,17 @@ impl<'a, 'b, D> Index<usize> for TokenSlice<'a, 'b, D>
 }
 
 // Implement InputLength for TokenSlice
-impl<'a, 'b, D> InputLength for TokenSlice<'a, 'b, D> {
+impl<'a, 'b> InputLength for TokenSlice<'a, 'b> {
     fn input_len(&self) -> usize {
         self.tokens.len()
     }
 }
 
 // Implement InputTake for TokenSlice
-impl<'a, 'b, D : Clone> InputTake for TokenSlice<'a, 'b, D> {
+impl<'a, 'b> InputTake for TokenSlice<'a, 'b> {
     fn take(&self, count: usize) -> Self {
         TokenSlice {
             tokens: &self.tokens[..count],
-            diag: self.diag.clone(),
         }
     }
 
@@ -166,17 +137,15 @@ impl<'a, 'b, D : Clone> InputTake for TokenSlice<'a, 'b, D> {
         (
             TokenSlice {
                 tokens: suffix,
-                diag: self.diag.clone(),
             },
             TokenSlice {
                 tokens: prefix,
-                diag: self.diag.clone(),
             },
         )
     }
 }
 
-impl<'a, 'b, D> Offset for TokenSlice<'a, 'b, D> {
+impl<'a, 'b> Offset for TokenSlice<'a, 'b> {
     fn offset(&self, second: &Self) -> usize {
         let first_ptr = self.tokens.as_ptr();
         let second_ptr = second.tokens.as_ptr();
@@ -188,7 +157,7 @@ impl<'a, 'b, D> Offset for TokenSlice<'a, 'b, D> {
 
 
 // Implement InputIter for TokenSlice
-impl<'a, 'b, D> InputIter for TokenSlice<'a, 'b, D> {
+impl<'a, 'b> InputIter for TokenSlice<'a, 'b> {
     type Item = &'b LexToken<'a>;
     type Iter = Enumerate<Iter<'b, LexToken<'a>>>;
     type IterElem = Iter<'b, LexToken<'a>>;
@@ -218,56 +187,40 @@ impl<'a, 'b, D> InputIter for TokenSlice<'a, 'b, D> {
 }
 
 // Implement Slice for TokenSlice
-impl<'a, 'b, D> Slice<Range<usize>> for TokenSlice<'a, 'b, D>
-where
-    D: Clone,
-{
+impl<'a, 'b> Slice<Range<usize>> for TokenSlice<'a, 'b>{
     fn slice(&self, range: Range<usize>) -> Self {
         TokenSlice {
             tokens: &self.tokens[range],
-            diag: self.diag.clone(),
         }
     }
 }
 
-impl<'a, 'b, D> Slice<RangeTo<usize>> for TokenSlice<'a, 'b, D>
-where
-    D: Clone,
-{
+impl<'a, 'b> Slice<RangeTo<usize>> for TokenSlice<'a, 'b>{
     fn slice(&self, range: RangeTo<usize>) -> Self {
         TokenSlice {
             tokens: &self.tokens[..range.end],
-            diag: self.diag.clone(),
         }
     }
 }
 
-impl<'a, 'b, D> Slice<RangeFrom<usize>> for TokenSlice<'a, 'b, D>
-where
-    D: Clone,
-{
+impl<'a, 'b> Slice<RangeFrom<usize>> for TokenSlice<'a, 'b>{
     fn slice(&self, range: RangeFrom<usize>) -> Self {
         TokenSlice {
             tokens: &self.tokens[range.start..],
-            diag: self.diag.clone(),
         }
     }
 }
 
-impl<'a, 'b, D> Slice<RangeFull> for TokenSlice<'a, 'b, D>
-where
-    D: Clone,
-{
+impl<'a, 'b> Slice<RangeFull> for TokenSlice<'a, 'b>{
     fn slice(&self, _: RangeFull) -> Self {
         TokenSlice {
             tokens: self.tokens,
-            diag: self.diag.clone(),
         }
     }
 }
 
 
-impl<'a, 'b, D> Iterator for TokenSlice<'a, 'b, D> {
+impl<'a, 'b> Iterator for TokenSlice<'a, 'b> {
     type Item = &'b LexToken<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -282,4 +235,4 @@ impl<'a, 'b, D> Iterator for TokenSlice<'a, 'b, D> {
 }
 
 
-impl<'a, 'b, D> UnspecializedInput for TokenSlice<'a, 'b, D> {}
+impl<'a, 'b> UnspecializedInput for TokenSlice<'a, 'b> {}
