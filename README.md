@@ -2,8 +2,8 @@
 my first ever "real" languge attempt. going with "everything is a function" similar to old javas "everyhing is a class" 
 so arrays are just functions... that return %out_of_bounds for anything out of bounds. hopefully the compiler can optimize it away.
 
-the languge is safe and GCed. and it probably wants to be JIT compiled with an automatically parallel runtime.
-I am considering making the runtime start runing before full parsing of the text is done. this is fine to do because we are pure functional.
+I am HEAVILY stealing from elixir here. For instance Cond is just highway robery from elixir. so is shadowing and my lack of explicit loops.
+
 
 # Dev Log
 
@@ -21,4 +21,4 @@ would look at the array stuff first mostly for the fun
 # perf debug
 RUSTFLAGS="--emit asm -C llvm-args=-x86-asm-syntax=intel" cargo build --release
 
-cargo run --no-default-features --features unsafe_mode
+you can also run main with an integer command line arg to benchmark it on a bigger sample size.
