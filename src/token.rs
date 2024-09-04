@@ -236,3 +236,11 @@ impl<'a, 'b> Iterator for TokenSlice<'a, 'b> {
 
 
 impl<'a, 'b> UnspecializedInput for TokenSlice<'a, 'b> {}
+
+use nom::FindToken;
+
+impl<'a, 'b> FindToken<LexToken<'a>> for TokenSlice<'a, 'b> {
+    fn find_token(&self, token: LexToken<'a>) -> bool {
+        self.tokens.iter().any(|t| *t == token)
+    }
+}

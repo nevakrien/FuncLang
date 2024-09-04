@@ -3,6 +3,7 @@
 use crate::token::{TokenSlice,LexToken,LexTag,BinaryOp};
 use crate::errors::{UserSideError,UserSideWarning};
 use nom_locate::LocatedSpan;
+use std::collections::VecDeque;
 
 #[derive(Debug, PartialEq)]
 pub struct GrammerNode<'a, 'b> {
@@ -45,7 +46,7 @@ this matters for 2 things:
 	Else(Else<'a,'b>),
 
 	//hybrid
-	Sequence(Vec<GrammerNode<'a, 'b>>),
+	Sequence(VecDeque<GrammerNode<'a, 'b>>),
 	Val(Value<'a,'b>), //some values such as parthesis or varibles can be non terminal
 	
 
@@ -83,12 +84,36 @@ impl<'a, 'b> From<GrammerNodeBase<'a, 'b>> for GrammerNode<'a, 'b> {
     }
 }
 
+
+impl<'a, 'b> From<Vec<GrammerNode<'a, 'b>>> for GrammerNodeBase<'a, 'b> {
+    fn from(nodes: Vec<GrammerNode<'a, 'b>>) -> Self {
+        GrammerNodeBase::Sequence(VecDeque::from(nodes))
+    }
+}
+
+impl<'a, 'b> From<Vec<GrammerNode<'a, 'b>>> for GrammerNode<'a, 'b> {
+    fn from(nodes: Vec<GrammerNode<'a, 'b>>) -> Self {
+        GrammerNodeBase::Sequence(VecDeque::from(nodes)).into()
+    }
+}
+
+
+impl<'a> From<LexToken<'a>> for SmallLexToken<'a> {
+    fn from(base: LexToken<'a>) -> Self {
+        SmallLexToken{
+        	span: base.span,
+        	tag: base.tag
+        }
+    }
+}
 //internal data
 
 #[derive(Debug, PartialEq,Clone)]
 pub enum KeyWord<'a>{
 	Nil(LocatedSpan<&'a str>),
 	
+	Import(LocatedSpan<&'a str>),
+
 	Return(LocatedSpan<&'a str>),
 	FuncDec(LocatedSpan<&'a str>),
 	Lamda(LocatedSpan<&'a str>),
