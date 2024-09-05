@@ -42,6 +42,8 @@ this matters for 2 things:
 	//non terminal
 	Unprocessed(TokenSlice<'a,'b>),
 	KeyWord(KeyWord<'a>),
+	Paren(ParenExpr<'a,'b>),
+
 	ControlBlock(Block<'a,'b>),
 	Else(Else<'a,'b>),
 
@@ -199,7 +201,7 @@ pub struct Assign<'a, 'b> {
 #[derive(Debug, PartialEq)]
 pub struct ParenExpr<'a,'b>{ 
 	pub start: Option<LocatedSpan<&'a str>>, //this can be non for things like def ) {...}
-	pub inner: Option<Box<GrammerNode<'a,'b>>>,
+	pub body: Option<Box<GrammerNode<'a,'b>>>,
 	pub end: Option<LocatedSpan<&'a str>>,//stays None untill we fined a closer (if we even find it)
 }
 

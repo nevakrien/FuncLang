@@ -28,19 +28,19 @@ fn is_paren<'a>(x:&LexToken<'a>) -> bool {
 // 	Valid(TokenSlice<'a,'b>,TokenSlice<'a,'b>),
 // }
 
-// fn is_opener(c:char) -> bool {
-// 	match c {
-// 		'{' => true,
-// 		'[' => true,
-// 		'(' => true,
+fn is_opener(c:char) -> bool {
+	match c {
+		'{' => true,
+		'[' => true,
+		'(' => true,
 
-// 		')' => false,
-// 		']' => false,
-// 		'}' => false,
+		')' => false,
+		']' => false,
+		'}' => false,
 
-// 		_ => unreachable!()
-// 	}
-// }
+		_ => unreachable!()
+	}
+}
 
 // fn get_closer(c:char) -> char {
 // 	match c {
@@ -145,6 +145,8 @@ fn handle_outer<'a,'b>(outer: OuterExp<'a,'b>) -> GrammerNode<'a,'b> {
 				}
 			};
 
+
+
 			// let ans = FuncDef{
 			// 	keyword:outer.keyword,
 			// 	name: name,
@@ -172,8 +174,29 @@ fn parse_assumed_paren<'a,'b>(input:TokenSlice<'a,'b>) -> GResult<'a,'b> {
 		0 => None,
 		_ => Some(UserSideError::UnexpectedTokens(extra.spans()))
 	};
-	// let ans = GrammerNodeBase::Par(ParenExpr{
+	if del.is_none(){
+		todo!();
+	}
+	let del = del.unwrap();
 
+	let start = match del[0].tag {
+		LexTag::Delimiter(c) => {
+			if is_opener(c) {
+				del[0].span
+			} else {
+				let mut ans : GrammerNode<'a,'b>= GrammerNodeBase::Paren(ParenExpr{
+					start: None,
+					body: None, 
+					end: Some(del[0].span)
+				}).into();
+
+				ans.error=error.map(|e| Box::new(e));
+				return Ok((input,ans));
+			}
+		},
+		_ => unreachable!(),
+	};
+	// let ans = GrammerNodeBase::Par(ParenExpr{
 	// })
 	todo!()
 }
