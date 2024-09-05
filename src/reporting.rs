@@ -152,7 +152,7 @@ fn test_print() {
 
     // Create a Cursor from the content
     for token in lex_full_text(source_code) {
-        println!("{:?}", token);
+        // println!("{:?}", token);
         if let Some(e) = token.error {
             errors.push(*e);
         }
@@ -173,7 +173,7 @@ fn test_compound_print() {
 
     // Create a Cursor from the content
     for token in lex_full_text(source_code) {
-        println!("{:?}", token);
+        // println!("{:?}", token);
         if let Some(e) = token.error {
             errors.push(*e);
         }
