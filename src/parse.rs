@@ -22,12 +22,6 @@ fn is_paren<'a>(x:&LexToken<'a>) -> bool {
 	}
 }
 
-fn is_comment<'a>(x:&LexToken<'a>) -> bool {
-	match x.tag {
-		LexTag::Comment() => true,
-		_ => false,
-	}
-}
 // enum AssumeResult<'a,'b> {
 // 	None,
 // 	Wrong(TokenSlice<'a,'b>,TokenSlice<'a,'b>),
@@ -167,10 +161,10 @@ fn handle_outer<'a,'b>(outer: OuterExp<'a,'b>) -> GrammerNode<'a,'b> {
 
 fn parse_assumed_paren<'a,'b>(input:TokenSlice<'a,'b>) -> GResult<'a,'b> {
 	
-	let (input,(_,extra,_,del)) = tuple((
-		take_while(is_comment),
+	let (input,(extra,del)) = tuple((
+		// take_while(is_comment),
 		take_till(is_paren),
-		take_while(is_comment),
+		// take_while(is_comment),
 		opt(take(1usize))
 		)
 	)(input)?;

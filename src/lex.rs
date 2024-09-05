@@ -51,11 +51,11 @@ pub fn lext_text<'a>(input: LocatedSpan<&'a str>) -> LexResult<'a>{
         lex_ender,
 		lex_delimiter,
 		lex_operator,
-		lex_comment,
+		// lex_comment,
 		lex_number,
         lex_string,
         lex_unknowen,
-	))(skip_whitespace(input))
+	))(skip_whitespace_and_comments(input))
 }
 fn lex_unknowen<'a>(input: LocatedSpan<&'a str>) -> LexResult<'a>{
     let (input,x)=recognize(pair(anychar,take_while(|c:char| !c.is_ascii())))(input)?;
@@ -73,14 +73,38 @@ fn lex_atom<'a>(input: LocatedSpan<&'a str>) -> LexResult<'a> {
     Ok((input, LexToken::new(ans,LexTag::Atom())))
 }
 
-fn skip_whitespace<'a>(input: LocatedSpan<&'a str>) -> LocatedSpan<&'a str> {
-	fn typed_take_whitespace<'a>(input: LocatedSpan<&'a str>) -> IResult<LocatedSpan<&'a str>,LocatedSpan<&'a str>>{
-		take_while( |c:char| c.is_whitespace())(input)
-	}
-	let s=opt(typed_take_whitespace)(input);
-	let(ans,_)=s.unwrap();
-	return ans;
+fn skip_whitespace_and_comments<'a>(input: LocatedSpan<&'a str>) -> LocatedSpan<&'a str> {
+    let mut cursor = input;
+    fn lex_comment<'a>(input: LocatedSpan<&'a str>) -> IResult<LocatedSpan<&'a str>,LocatedSpan<&'a str> >{
+        recognize(preceded(
+            is_a("#"),
+            take_till(|c| c=='\n'),
+            // take_while(|c| c=='\n')
+        ))(input)   
+    }
+
+
+    loop {
+        cursor = skip_whitespace(cursor);
+
+        // Skip comments as well
+        match lex_comment(cursor) {
+            Ok((new_cursor, _)) => cursor = new_cursor, // Keep skipping comments
+            Err(_) => break, // No more comments, break the loop
+        }
+    }
+
+    cursor
 }
+
+fn skip_whitespace<'a>(input: LocatedSpan<&'a str>) -> LocatedSpan<&'a str> {
+        fn typed_take_whitespace<'a>(input: LocatedSpan<&'a str>) -> IResult<LocatedSpan<&'a str>,LocatedSpan<&'a str>>{
+            take_while( |c:char| c.is_whitespace())(input)
+        }
+        let s=opt(typed_take_whitespace)(input);
+        let(ans,_)=s.unwrap();
+        return ans;
+    }
 
 fn lex_delimiter<'a>(input: LocatedSpan<&'a str>) -> LexResult<'a>{
 	let(input,token) = recognize(one_of("{}[]()"))(input)?;
@@ -157,16 +181,16 @@ fn lex_operator<'a>(input: LocatedSpan<&'a str>) -> LexResult<'a> {
     Ok((input, LexToken::new(token,op_tag)))
 }
 
-fn lex_comment<'a>(input: LocatedSpan<&'a str>) -> LexResult<'a>{
-	recognize(preceded(
-		is_a("#"),
-		take_till(|c| c=='\n'),
-		// take_while(|c| c=='\n')
-	))(input)	
-	.map(|(i,x)| 
-		(i,LexToken::new(x,LexTag::Comment()))
-	)
-}
+// fn lex_comment<'a>(input: LocatedSpan<&'a str>) -> LexResult<'a>{
+// 	recognize(preceded(
+// 		is_a("#"),
+// 		take_till(|c| c=='\n'),
+// 		// take_while(|c| c=='\n')
+// 	))(input)	
+// 	.map(|(i,x)| 
+// 		(i,LexToken::new(x,LexTag::Comment()))
+// 	)
+// }
 
 
 fn lex_word<'a>(input: LocatedSpan<&'a str>) -> LexResult<'a>{
@@ -453,7 +477,7 @@ fn test_skip_whitespace() {
 #[test]
 #[no_mangle]
 fn test_lex_basic_string_with_names_and_comments() {
-    let input = LocatedSpan::new("name1 # This is a comment\nname2 # Another comment");
+    let input = LocatedSpan::new("name1 # This is a comment\nname2 # Another comment\n name3");
     let result = lext_text(input);
 
     assert!(result.is_ok());
@@ -461,20 +485,17 @@ fn test_lex_basic_string_with_names_and_comments() {
     let (remaining, token1) = result.unwrap();
     assert_eq!(token1.tag, LexTag::Word());
     assert_eq!(token1.span.fragment(), &"name1");
-
+    
     let result = lext_text(remaining);
     let (remaining, token2) = result.unwrap();
-    assert_eq!(token2.tag, LexTag::Comment());
-    
+    assert_eq!(token2.tag, LexTag::Word());
+    assert_eq!(token2.span.fragment(), &"name2");
+
     let result = lext_text(remaining);
     let (remaining, token3) = result.unwrap();
     assert_eq!(token3.tag, LexTag::Word());
-    assert_eq!(token3.span.fragment(), &"name2");
+    assert_eq!(token3.span.fragment(), &"name3");
 
-    let result = lext_text(remaining);
-    let (remaining, token4) = result.unwrap();
-    assert_eq!(token4.tag, LexTag::Comment());
-    
     // Make sure no tokens left
     assert_eq!(remaining.fragment(), &"");
 }
@@ -664,7 +685,7 @@ fn test_lex_text_happy_path() {
         LexTag::Ender(';'),
         LexTag::Float(1.0),
         LexTag::String('"'),                // '"string"'
-        LexTag::Comment(),                  // '# comment'
+        // LexTag::Comment(),                  // '# comment'
         LexTag::Atom(),                     // '%atom'
         LexTag::Op(BinaryOp::DoubleDots),
         LexTag::Atom(),                     // ':atom'

@@ -37,7 +37,7 @@ impl<'a> InputLength for LexToken<'a> {
 #[derive(Debug, PartialEq, Clone)]
 pub enum LexTag {
     // Your LexTag variants here
-    Comment(),
+    // Comment(),
     Word(),
     Atom(),
     Float(f64),
