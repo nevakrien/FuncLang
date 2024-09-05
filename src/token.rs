@@ -92,7 +92,11 @@ impl<'a, 'b> TokenSlice<'a, 'b> {
     pub fn last(&self) -> Option<&LexToken<'a>> {
         self.tokens.last()
     }
-
+        
+    /// Collects the spans of all tokens in the slice
+    pub fn spans(&self) -> Vec<LocatedSpan<&'a str>> {
+        self.tokens.iter().map(|token| token.span).collect()
+    }
 }
 
 impl<'a, 'b> TokenSlice<'a, 'b> {

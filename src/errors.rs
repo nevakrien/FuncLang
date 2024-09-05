@@ -16,6 +16,7 @@ pub enum UserSideError<'a> {
 	UnexpectedNameTok(LexToken<'a>),
 	ReservedName(LocatedSpan<&'a str>),
 
+	UnexpectedTokens(Vec<LocatedSpan<&'a str>>),
 	
 	UnclosedPar(LocatedSpan<&'a str>,LocatedSpan<&'a str>),//start found
 	ExtraPar(LocatedSpan<&'a str>),

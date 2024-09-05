@@ -4,16 +4,30 @@ use nom::IResult;
 use crate::errors::{UserSideError};
 use nom_locate::LocatedSpan;
 
+use nom::sequence::tuple;
+use nom::combinator::opt;
 
 use nom::bytes::complete::take;
-use nom::bytes::complete::take_till;
+use nom::bytes::complete::{take_till,take_while};
 use nom::InputLength;
 use crate::ast::FuncDef;
 
 use nom::{Err::Error};
 
 // // use crate::errors::TResult;
+fn is_paren<'a>(x:&LexToken<'a>) -> bool {
+	match x.tag {
+		LexTag::Delimiter(_) => true,
+		_ => false,
+	}
+}
 
+fn is_comment<'a>(x:&LexToken<'a>) -> bool {
+	match x.tag {
+		LexTag::Comment() => true,
+		_ => false,
+	}
+}
 // enum AssumeResult<'a,'b> {
 // 	None,
 // 	Wrong(TokenSlice<'a,'b>,TokenSlice<'a,'b>),
@@ -151,6 +165,24 @@ fn handle_outer<'a,'b>(outer: OuterExp<'a,'b>) -> GrammerNode<'a,'b> {
 	}
 }
 
+fn parse_assumed_paren<'a,'b>(input:TokenSlice<'a,'b>) -> GResult<'a,'b> {
+	
+	let (input,(_,extra,_,del)) = tuple((
+		take_while(is_comment),
+		take_till(is_paren),
+		take_while(is_comment),
+		opt(take(1usize))
+		)
+	)(input)?;
+	let error = match extra.input_len(){
+		0 => None,
+		_ => Some(UserSideError::UnexpectedTokens(extra.spans()))
+	};
+	// let ans = GrammerNodeBase::Par(ParenExpr{
+
+	// })
+	todo!()
+}
 // enum AssumeWord<'a> {
 // 	// WrongTag(LexToken<'a>),
 // 	KeyWord(KeyWord<'a>),
