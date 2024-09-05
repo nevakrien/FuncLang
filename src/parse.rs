@@ -1,8 +1,9 @@
 use crate::token::{TokenSlice,LexToken,LexTag};
 use crate::ast::{GrammerNode,GrammerNodeBase,ParenExpr,Value,KeyWord};
-use nom::bytes::complete::take_while;
 use nom::IResult;
 // use crate::errors::{UserSideError};
+use nom_locate::LocatedSpan;
+
 
 use nom::bytes::complete::take;
 use nom::bytes::complete::take_till;
@@ -13,20 +14,25 @@ use nom::{Err::Error};
 
 // // use crate::errors::TResult;
 
+// enum AssumeResult<'a,'b> {
+// 	None,
+// 	Wrong(TokenSlice<'a,'b>,TokenSlice<'a,'b>),
+// 	Valid(TokenSlice<'a,'b>,TokenSlice<'a,'b>),
+// }
 
-fn is_opener(c:char) -> bool {
-	match c {
-		'{' => true,
-		'[' => true,
-		'(' => true,
+// fn is_opener(c:char) -> bool {
+// 	match c {
+// 		'{' => true,
+// 		'[' => true,
+// 		'(' => true,
 
-		')' => false,
-		']' => false,
-		'}' => false,
+// 		')' => false,
+// 		']' => false,
+// 		'}' => false,
 
-		_ => unreachable!()
-	}
-}
+// 		_ => unreachable!()
+// 	}
+// }
 
 // fn get_closer(c:char) -> char {
 // 	match c {
@@ -37,13 +43,24 @@ fn is_opener(c:char) -> bool {
 // 		_ => unreachable!()
 // 	}
 // }
-
-pub type RawResult<'a,'b> = nom::IResult<TokenSlice<'a,'b>, GrammerNode<'a,'b>,()>;
+pub type TResult<'a,'b,T> = nom::IResult<TokenSlice<'a,'b>, T, ()>;
+pub type GResult<'a,'b> = nom::IResult<TokenSlice<'a,'b>, GrammerNode<'a,'b>,()>;
+pub type RawResult<'a,'b> = nom::IResult<TokenSlice<'a,'b>, TokenSlice<'a,'b>,()>;
 
 #[allow(dead_code)]
-pub fn parse<'a,'b>(input:TokenSlice<'a,'b>) -> GrammerNode<'a,'b> {
-	let start :GrammerNode<'a,'b> = GrammerNodeBase::Unprocessed(input).into();
-	start
+pub fn parse<'a,'b>(input:TokenSlice<'a,'b>) -> Option<GrammerNode<'a,'b>> {
+	// let start :GrammerNode<'a,'b> = GrammerNodeBase::Unprocessed(input).into();
+	// start
+	if input.input_len() == 0 {
+		return None;
+	}
+	match parse_outer_scope(input.clone()) {
+		Err(_) => Some(GrammerNodeBase::Unprocessed(input).into()),
+		Ok((input,res)) => {
+			let x = handle_outer(res);
+			todo!()
+		}//Some(handle_outer(input,res)),
+	}
 }
 
 fn parse_outer_keyword<'a,'b>(input:TokenSlice<'a,'b>) -> IResult<TokenSlice<'a,'b>,KeyWord<'a>,()>{
@@ -75,18 +92,81 @@ fn is_outer_keyword<'a,'b>(token:&LexToken<'a>) -> bool{
 	}
 }
 
-#[allow(dead_code)]
-fn parse_outer_scope<'a,'b>(input:TokenSlice<'a,'b>) -> RawResult<'a,'b> {
+struct OuterExp<'a,'b> {
+	pub keyword : KeyWord<'a>,
+	pub body : TokenSlice<'a,'b>,
+}
+
+fn parse_outer_scope<'a,'b>(input:TokenSlice<'a,'b>) -> TResult<'a,'b,OuterExp<'a,'b>> {
 	let (input,word) = parse_outer_keyword(input)?;
 	let (input,remainder) = take_till(is_outer_keyword)(input)?;
 
-	let word = GrammerNodeBase::KeyWord(word).into();
-	let remainder = GrammerNodeBase::Unprocessed(remainder).into();
-
-	Ok((input,vec![word,remainder].into()))
+	Ok((input,OuterExp{keyword: word,body: remainder}))	
 }
 
-// fn parse_del<'a,'b>(input:TokenSlice<'a,'b>) -> RawResult<'a,'b> {
+fn handle_outer<'a,'b>(outer: OuterExp<'a,'b>) -> GrammerNode<'a,'b> {
+	match outer.keyword {
+		KeyWord::Import(_) => todo!(),
+		KeyWord::FuncDec(_) => {
+			match parse_word(outer.body) {
+				_=>todo!()
+			}
+			todo!()
+			// GrammerNodeBase::Function(FuncDef{
+			// 	word:keyword,
+			// 	name:opt(parse_word)
+			// })
+		}
+		_ => unreachable!()
+	}
+}
+
+enum AssumeWord<'a> {
+	WrongTag(LexToken<'a>),
+	KeyWord(KeyWord<'a>),
+	Name(LexToken<'a>),
+}
+
+fn parse_word<'a,'b>(input:TokenSlice<'a,'b>) -> TResult<'a,'b,AssumeWord<'a>> {
+	let (input,slice) = take(1usize)(input)?;
+	let x = slice[0].clone();
+	let ans = match x.tag {
+		LexTag::Word() => match match_keyword(x.span) {
+			None => AssumeWord::Name(x),
+			Some(kw) => AssumeWord::KeyWord(kw),
+
+		},
+		_ => AssumeWord::WrongTag(x)
+	};
+	Ok((input,ans))
+}
+
+fn match_keyword<'a>(x:LocatedSpan<&'a str>) -> Option<KeyWord<'a>> {
+	match *x.fragment() {
+		"null" | "nil" => Some(KeyWord::Nil(x)),
+	
+		"import" => Some(KeyWord::Import(x)),
+
+		"return" => Some(KeyWord::Return(x)),
+		"def" => Some(KeyWord::FuncDec(x)),
+		"fn" | "lamda" => Some(KeyWord::Lamda(x)),
+		
+		"if" => Some(KeyWord::If(x)),
+		"else" => Some(KeyWord::Else(x)),
+		
+		"cond" => Some(KeyWord::Cond(x)),
+		"match" => Some(KeyWord::Match(x)),
+		_ => None,
+	}
+}
+
+
+
+// fn assume_block<'a,'b>(input:TokenSlice<'a,'b>) -> GrammerNode<'a,'b> {
+
+// }
+
+// fn parse_del<'a,'b>(input:TokenSlice<'a,'b>) -> GResult<'a,'b> {
 // 	let (input,del_slice) = take(1usize)(input)?;
 // 	let del = &del_slice[0];
 
@@ -138,52 +218,19 @@ fn test_parse_outer() {
 
     let(input,first) = parse_outer_scope(input).unwrap();
     let(input,second) = parse_outer_scope(input).unwrap();
-    let(input,third) = parse_outer_scope(input).unwrap();
-    let(input,forth) = parse_outer_scope(input).unwrap();
+    let(input,_third) = parse_outer_scope(input).unwrap();
+    let(input,_forth) = parse_outer_scope(input).unwrap();
     let(input,fith) = parse_outer_scope(input).unwrap();
 
     assert!(parse_outer_scope(input).is_err());
     
-    match first.base {
-    	GrammerNodeBase::Sequence(v) => {
-    		assert!(v.len()==2);
-    		match &v[1].base {
-    			GrammerNodeBase::Unprocessed(s) => {
-    				println!("{:?}",s);
-
-    				assert!(s[s.input_len() - 2].error.is_some())
-    			}
-    			_ => unreachable!()
-    		}
-    	},
-    	_ => unreachable!()
+    {
+    	let s = first.body;
+    	println!("{:?}",s);
+    	assert!(s[s.input_len() - 2].error.is_some())
     }
 
-    match second.base {
-    	GrammerNodeBase::Sequence(v) => {
-    		assert!(v.len()==2);
-    		match &v[1].base {
-    			GrammerNodeBase::Unprocessed(s) => {
-    				println!("{:?}",s);
-    				assert!(s.input_len()==0);
-    			}
-    			_ => unreachable!()
-    		}
-    	},
-    	_ => unreachable!()
-    }
+    assert!(second.body.input_len()==0);
+    assert!(fith.body.input_len()==1);
 
-    match fith.base {
-    	GrammerNodeBase::Sequence(v) => {
-    		assert!(v.len()==2);
-    		match &v[1].base {
-    			GrammerNodeBase::Unprocessed(s) => {
-    				println!("{:?}",s);
-    				assert!(s.input_len()==1);
-    			}
-    			_ => unreachable!()
-    		}
-    	},
-    	_ => unreachable!()
-    }
 }	

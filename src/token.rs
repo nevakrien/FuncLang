@@ -11,7 +11,7 @@ use nom::UnspecializedInput;
 use crate::errors::{UserSideError};//UserSideWarning
 
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq,Clone)]
 pub struct LexToken<'a> {
     pub span: LocatedSpan<&'a str>,
     pub tag: LexTag,
