@@ -22,8 +22,11 @@ impl<'a> UserSideError<'a> {
             UserSideError::UnclosedString(span, ch) => vec![handle_unclosed_string(span, *ch)],
             UserSideError::UnokwenToken(span) => vec![handle_unkowen_token_error(span)],
             UserSideError::ExtraPar(span) => vec![handle_extra_par_error(span)],
+
             UserSideError::UnclosedPar(start, end) => vec![handle_unclosed_par_error(start, end)],
             UserSideError::Compound(errors) => handle_compound_error(errors),
+            _=> todo!(),
+            // UserSideError::MissingFuncName(_) => todo!(),
         }
     }
 }

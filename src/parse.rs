@@ -1,14 +1,14 @@
 use crate::token::{TokenSlice,LexToken,LexTag};
-use crate::ast::{GrammerNode,GrammerNodeBase,ParenExpr,Value,KeyWord};
+use crate::ast::{GrammerNode,GrammerNodeBase,ParenExpr,Value,KeyWord,Block};
 use nom::IResult;
-// use crate::errors::{UserSideError};
+use crate::errors::{UserSideError};
 use nom_locate::LocatedSpan;
 
 
 use nom::bytes::complete::take;
 use nom::bytes::complete::take_till;
 use nom::InputLength;
-
+use crate::ast::FuncDef;
 
 use nom::{Err::Error};
 
@@ -48,14 +48,14 @@ pub type GResult<'a,'b> = nom::IResult<TokenSlice<'a,'b>, GrammerNode<'a,'b>,()>
 pub type RawResult<'a,'b> = nom::IResult<TokenSlice<'a,'b>, TokenSlice<'a,'b>,()>;
 
 #[allow(dead_code)]
-pub fn parse<'a,'b>(input:TokenSlice<'a,'b>) -> Option<GrammerNode<'a,'b>> {
+pub fn parse<'a,'b>(input:TokenSlice<'a,'b>) -> GResult<'a,'b> {
 	// let start :GrammerNode<'a,'b> = GrammerNodeBase::Unprocessed(input).into();
 	// start
 	if input.input_len() == 0 {
-		return None;
+		return return Err(Error(()));
 	}
 	match parse_outer_scope(input.clone()) {
-		Err(_) => Some(GrammerNodeBase::Unprocessed(input).into()),
+		Err(_) => Ok((TokenSlice::new(&[]),GrammerNodeBase::Unprocessed(input).into())),
 		Ok((input,res)) => {
 			let x = handle_outer(res);
 			todo!()
@@ -105,12 +105,42 @@ fn parse_outer_scope<'a,'b>(input:TokenSlice<'a,'b>) -> TResult<'a,'b,OuterExp<'
 }
 
 fn handle_outer<'a,'b>(outer: OuterExp<'a,'b>) -> GrammerNode<'a,'b> {
-	match outer.keyword {
+	match outer.keyword.clone() {
 		KeyWord::Import(_) => todo!(),
 		KeyWord::FuncDec(_) => {
-			match parse_word(outer.body) {
-				_=>todo!()
-			}
+
+			let (input,name,error) = match outer.body.take_err(1usize) {
+				Ok((input,res)) => match res[0].tag {
+					LexTag::Word() => {
+						if match_keyword(res[0].span).is_none() {
+							(input,Some(res[0].span),None)
+						} else {
+							let error = UserSideError::ReservedName(res[0].span);
+							(input,None,Some(error))
+						}
+					},
+					LexTag::Delimiter(_) => {
+						let error = UserSideError::MissingFuncName(outer.keyword.get_span());
+						(outer.body,None,Some(error))
+					}, 
+					_ => {
+						let error = UserSideError::UnexpectedNameTok(res[0].clone());
+						(input,None,Some(error))
+					}
+				}
+
+				Err(_) => {
+					let node :GrammerNode<'a,'b> = GrammerNodeBase::KeyWord(outer.keyword.clone()).into();
+					return node.with_error(
+						UserSideError::EmptyFuncDef(outer.keyword.get_span())
+					);
+				}
+			};
+
+			// let ans = FuncDef{
+			// 	keyword:outer.keyword,
+			// 	name: name,
+			// };
 			todo!()
 			// GrammerNodeBase::Function(FuncDef{
 			// 	word:keyword,
@@ -121,25 +151,26 @@ fn handle_outer<'a,'b>(outer: OuterExp<'a,'b>) -> GrammerNode<'a,'b> {
 	}
 }
 
-enum AssumeWord<'a> {
-	WrongTag(LexToken<'a>),
-	KeyWord(KeyWord<'a>),
-	Name(LexToken<'a>),
-}
+// enum AssumeWord<'a> {
+// 	// WrongTag(LexToken<'a>),
+// 	KeyWord(KeyWord<'a>),
+// 	Name(LexToken<'a>),
+// }
 
-fn parse_word<'a,'b>(input:TokenSlice<'a,'b>) -> TResult<'a,'b,AssumeWord<'a>> {
-	let (input,slice) = take(1usize)(input)?;
-	let x = slice[0].clone();
-	let ans = match x.tag {
-		LexTag::Word() => match match_keyword(x.span) {
-			None => AssumeWord::Name(x),
-			Some(kw) => AssumeWord::KeyWord(kw),
+// fn parse_word<'a,'b>(input:TokenSlice<'a,'b>) -> TResult<'a,'b,AssumeWord<'a>> {
+// 	let (input,slice) = take(1usize)(input)?;
+// 	let x = slice[0].clone();
+// 	let ans = match x.tag {
+// 		LexTag::Word() => match match_keyword(x.span) {
+// 			None => AssumeWord::Name(x),
+// 			Some(kw) => AssumeWord::KeyWord(kw),
 
-		},
-		_ => AssumeWord::WrongTag(x)
-	};
-	Ok((input,ans))
-}
+// 		},
+// 		// _ => AssumeWord::WrongTag(x)
+// 		_ => {return Err(Error(()));}
+// 	};
+// 	Ok((input,ans))
+// }
 
 fn match_keyword<'a>(x:LocatedSpan<&'a str>) -> Option<KeyWord<'a>> {
 	match *x.fragment() {

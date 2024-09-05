@@ -1,5 +1,6 @@
 // #![allow(dead_code)] //this module is being consumed
 use  nom_locate::LocatedSpan;
+use crate::token::{LexToken};
 
 #[derive(Debug,PartialEq,Clone)]
 pub enum UserSideError<'a> {
@@ -10,6 +11,12 @@ pub enum UserSideError<'a> {
 
 	Compound(Vec<UserSideError<'a>>),
 
+	MissingFuncName(LocatedSpan<&'a str>),
+	EmptyFuncDef(LocatedSpan<&'a str>),
+	UnexpectedNameTok(LexToken<'a>),
+	ReservedName(LocatedSpan<&'a str>),
+
+	
 	UnclosedPar(LocatedSpan<&'a str>,LocatedSpan<&'a str>),//start found
 	ExtraPar(LocatedSpan<&'a str>),
 

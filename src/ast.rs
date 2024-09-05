@@ -125,6 +125,22 @@ pub enum KeyWord<'a>{
 	Match(LocatedSpan<&'a str>),
 }
 
+impl<'a> KeyWord<'a> {
+    pub fn get_span(&self) -> LocatedSpan<&'a str> {
+        match self {
+            KeyWord::Nil(span) 
+            | KeyWord::Import(span)
+            | KeyWord::Return(span)
+            | KeyWord::FuncDec(span)
+            | KeyWord::Lamda(span)
+            | KeyWord::If(span)
+            | KeyWord::Else(span)
+            | KeyWord::Cond(span)
+            | KeyWord::Match(span) => *span,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Value<'a,'b>{
 	Basic(SmallLexToken<'a>),//not all tags are valid. up to the programer to make sure only the right types are here
@@ -190,20 +206,20 @@ pub struct ParenExpr<'a,'b>{
 //ifs and lamda have the exact same syntax... other than the keyword. shared logic here
 #[derive(Debug, PartialEq)]
 pub struct Block<'a,'b>{ 
-	pub start: Option<Box<ParenExpr<'a,'b>>>, //note we use specifcly () braces here
-	pub body: Option<Box<ParenExpr<'a,'b>>>, //note we use specifcly {} braces here
+	pub start: Box<ParenExpr<'a,'b>>, //note we use specifcly () braces here
+	pub body: Box<ParenExpr<'a,'b>>, //note we use specifcly {} braces here
 }
 
 #[derive(Debug, PartialEq)]
 pub struct If<'a,'b>{
-	pub word : KeyWord<'a>,
+	pub keyword : KeyWord<'a>,
 	pub body: Block<'a,'b>,
 	pub else_block : Option<Box<Else<'a,'b>>> //if not there implicitly returns nil
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Else<'a,'b>{
-	pub word : KeyWord<'a>,
+	pub keyword : KeyWord<'a>,
 	pub body: ParenExpr<'a,'b>,
 }
 
@@ -218,13 +234,13 @@ pub enum Func<'a,'b>{
 
 #[derive(Debug, PartialEq)]
 pub struct Lamda<'a,'b>{
-	pub word : KeyWord<'a>,
+	pub keyword : KeyWord<'a>,
 	pub body: Block<'a,'b>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct FuncDef<'a,'b>{
-	pub word : KeyWord<'a>,
+	pub keyword : KeyWord<'a>,
 	pub name : Option<LocatedSpan<&'a str>>,
 	pub body: Block<'a,'b>,
 }
