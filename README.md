@@ -1,4 +1,6 @@
 # FuncLang
+doing a full rewrite of this in https://github.com/nevakrien/Faeyne_lang to try and not run into my own abstructions
+
 my first ever "real" languge attempt. going with "everything is a function" similar to old javas "everyhing is a class" 
 so arrays are just functions... that return %out_of_bounds for anything out of bounds. hopefully the compiler can optimize it away.
 
